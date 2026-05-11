@@ -18,20 +18,25 @@ function getAuth() {
 }
 
 export async function readSheet(sheetName: string): Promise<Record<string, string>[]> {
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: sheetName,
-  });
-  const rows = res.data.values ?? [];
-  if (rows.length < 2) return [];
-  const headers = rows[0] as string[];
-  return rows.slice(1).map((row) => {
-    const record: Record<string, string> = {};
-    headers.forEach((h, i) => { record[h] = (row[i] ?? "") as string; });
-    return record;
-  });
+  try {
+    const auth = getAuth();
+    const sheets = google.sheets({ version: "v4", auth });
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: sheetName,
+    });
+    const rows = res.data.values ?? [];
+    if (rows.length < 2) return [];
+    const headers = rows[0] as string[];
+    return rows.slice(1).map((row) => {
+      const record: Record<string, string> = {};
+      headers.forEach((h, i) => { record[h] = (row[i] ?? "") as string; });
+      return record;
+    });
+  } catch {
+    // Sheet doesn't exist yet or other API error — return empty array
+    return [];
+  }
 }
 
 export async function writeSheet(sheetName: string, data: Record<string, string>[]) {
