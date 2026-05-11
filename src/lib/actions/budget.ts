@@ -2,9 +2,15 @@
 import { revalidatePath } from "next/cache";
 import { readSheet, appendRow, writeSheet } from "@/lib/sheets";
 
+function revalidateAll() {
+  revalidatePath("/budget");
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
+}
+
 export async function addBudgetLine(formData: FormData) {
   const mois = formData.get("mois") as string;
-  const categorie = formData.get("categorie") as string;
+  const categorie = (formData.get("categorie") as string).trim();
   const type = formData.get("type") as string;
   const montant = formData.get("montant") as string;
 
@@ -14,7 +20,7 @@ export async function addBudgetLine(formData: FormData) {
     Mois: mois, "Catégorie": categorie, Type: type, Montant_Prevu: montant || "0",
   });
 
-  revalidatePath("/budget");
+  revalidateAll();
 }
 
 export async function updateBudgetLine(formData: FormData) {
@@ -29,12 +35,12 @@ export async function updateBudgetLine(formData: FormData) {
     await writeSheet("Budgets", budget);
   }
 
-  revalidatePath("/budget");
+  revalidateAll();
 }
 
 export async function deleteBudgetLine(mois: string, categorie: string) {
   const budget = await readSheet("Budgets");
   const filtered = budget.filter((r) => !(r["Mois"] === mois && r["Catégorie"] === categorie));
   await writeSheet("Budgets", filtered);
-  revalidatePath("/budget");
+  revalidateAll();
 }

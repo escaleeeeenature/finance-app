@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { readSheet } from "@/lib/sheets";
-import { parseNum, fmtCHF, toMoisStr, FR_MONTHS } from "@/lib/utils";
+import { parseNum, fmtCHF, toMoisStr } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddBudgetDialog } from "@/components/budget-forms";
 import { BudgetMonthSelector } from "@/components/budget-month-selector";

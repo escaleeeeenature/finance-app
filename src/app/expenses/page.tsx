@@ -5,6 +5,14 @@ import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight } from "lucide-react";
 import { AddTransactionDialog } from "@/components/expense-form";
 import { RevolutImport } from "@/components/revolut-import";
 
+type TxType = "Dépense" | "Revenu" | "Transfert";
+
+const TYPE_CONFIG: Record<TxType, { bg: string; color: string; sign: string; Icon: React.ElementType }> = {
+  Dépense:   { bg: "bg-red-50",     color: "text-red-500",     sign: "−", Icon: ArrowDownCircle },
+  Revenu:    { bg: "bg-emerald-50", color: "text-emerald-600", sign: "+", Icon: ArrowUpCircle },
+  Transfert: { bg: "bg-slate-100",  color: "text-slate-400",   sign: "",  Icon: ArrowLeftRight },
+};
+
 export default async function ExpensesPage() {
   const [transactions, accounts, budgets] = await Promise.all([
     readSheet("Transactions"),
@@ -44,15 +52,12 @@ export default async function ExpensesPage() {
         <CardContent className="p-0">
           <div className="divide-y divide-slate-100">
             {sorted.slice(0, 100).map((t, i) => {
-              const isDep = t["Type"] === "Dépense";
-              const isRev = t["Type"] === "Revenu";
-              const isTransfer = t["Type"] === "Transfert";
+              const txType = (t["Type"] as TxType) ?? "Transfert";
+              const { bg, color, sign, Icon } = TYPE_CONFIG[txType] ?? TYPE_CONFIG.Transfert;
               return (
                 <div key={i} className="flex items-center gap-4 px-6 py-3 hover:bg-slate-50 transition-colors">
-                  <div className={`p-2 rounded-full ${isDep ? "bg-red-50" : isRev ? "bg-emerald-50" : "bg-slate-100"}`}>
-                    {isDep ? <ArrowDownCircle size={16} className="text-red-500" /> :
-                     isRev ? <ArrowUpCircle size={16} className="text-emerald-500" /> :
-                     <ArrowLeftRight size={16} className="text-slate-400" />}
+                  <div className={`p-2 rounded-full ${bg}`}>
+                    <Icon size={16} className={color} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{t["Libellé"] || "—"}</p>
@@ -60,8 +65,8 @@ export default async function ExpensesPage() {
                       {t["Date"]} · {t["Catégorie"]} · {t["Compte_Source"]}
                     </p>
                   </div>
-                  <span className={`text-sm font-semibold tabular-nums ${isDep ? "text-red-500" : isRev ? "text-emerald-600" : "text-slate-400"}`}>
-                    {isDep ? "−" : isRev ? "+" : ""}{fmtCHF(parseNum(t["Montant"]))}
+                  <span className={`text-sm font-semibold tabular-nums ${color}`}>
+                    {sign}{fmtCHF(parseNum(t["Montant"]))}
                   </span>
                 </div>
               );

@@ -4,8 +4,6 @@ import path from "path";
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID!;
 
 function getAuth() {
-  // En production (Vercel) : credentials dans la variable d'env GOOGLE_CREDENTIALS_JSON
-  // En local : fichier credentials.json à la racine
   if (process.env.GOOGLE_CREDENTIALS_JSON) {
     const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
     return new google.auth.GoogleAuth({
@@ -53,7 +51,16 @@ export async function writeSheet(sheetName: string, data: Record<string, string>
 export async function appendRow(sheetName: string, row: Record<string, string>) {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
-  const values = Object.values(row);
+
+  // Read headers first to guarantee values land in the correct columns,
+  // regardless of the key insertion order of the caller's object.
+  const headerRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${sheetName}!1:1`,
+  });
+  const headers = (headerRes.data.values?.[0] as string[] | undefined) ?? Object.keys(row);
+  const values = headers.map((h) => row[h] ?? "");
+
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!A1`,
@@ -61,18 +68,4 @@ export async function appendRow(sheetName: string, row: Record<string, string>) 
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [values] },
   });
-}
-
-export async function updateSheetRow(
-  sheetName: string,
-  rowIndex: number, // 0-based data row (0 = first data row after header)
-  updates: Record<string, string>
-) {
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  const existing = await readSheet(sheetName);
-  if (rowIndex >= existing.length) return;
-  const updated = { ...existing[rowIndex], ...updates };
-  existing[rowIndex] = updated;
-  await writeSheet(sheetName, existing);
 }

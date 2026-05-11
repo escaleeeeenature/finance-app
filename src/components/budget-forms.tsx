@@ -10,23 +10,34 @@ import { addBudgetLine, updateBudgetLine, deleteBudgetLine } from "@/lib/actions
 
 export function AddBudgetDialog({ mois }: { mois: string }) {
   const [open, setOpen] = useState(false);
+  const [formKey, setFormKey] = useState(0);
   const [type, setType] = useState("Dépense");
+  const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  function openDialog() {
+    setType("Dépense");
+    setError("");
+    setFormKey((k) => k + 1);
+    setOpen(true);
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError("");
     const fd = new FormData(e.currentTarget);
     fd.set("mois", mois);
     fd.set("type", type);
     startTransition(async () => {
-      await addBudgetLine(fd);
+      const res = await addBudgetLine(fd);
+      if (res?.error) { setError(res.error); return; }
       setOpen(false);
     });
   }
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5">
+      <Button size="sm" onClick={openDialog} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5">
         <Plus size={15} /> Ajouter une ligne
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -34,7 +45,7 @@ export function AddBudgetDialog({ mois }: { mois: string }) {
           <DialogHeader>
             <DialogTitle>Nouvelle ligne budgétaire — {mois}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form key={formKey} onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Catégorie</Label>
               <Input name="categorie" placeholder="ex: Loyer, Salaire, Courses..." required />
@@ -55,6 +66,7 @@ export function AddBudgetDialog({ mois }: { mois: string }) {
                 <Input name="montant" type="number" min="0" step="0.01" defaultValue="0" />
               </div>
             </div>
+            {error && <p className="text-sm text-red-500">{error}</p>}
             <Button type="submit" disabled={isPending} className="w-full bg-indigo-600 hover:bg-indigo-700">
               {isPending ? "Enregistrement..." : "Enregistrer"}
             </Button>
@@ -97,11 +109,13 @@ export function EditBudgetLine({
 
   return (
     <>
+      {/* Always visible at low opacity — works on mobile too */}
       <button
         onClick={() => setOpen(true)}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-200 transition-all"
+        className="opacity-40 hover:opacity-100 p-1 rounded hover:bg-slate-200 transition-all"
+        title={`Modifier ${categorie}`}
       >
-        <Pencil size={12} className="text-slate-400" />
+        <Pencil size={12} className="text-slate-500" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-xs">

@@ -30,3 +30,8 @@ export function parseNum(val: string | number | undefined): number {
   const str = String(val).replace(/'/g, "").replace(/\s/g, "").replace(",", ".");
   return parseFloat(str) || 0;
 }
+
+/** Converts an HTML date input value (yyyy-mm-dd) to app storage format (dd/mm/yyyy). */
+export function isoToAppDate(iso: string): string {
+  return iso.split("-").reverse().join("/");
+}
