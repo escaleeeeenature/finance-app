@@ -52,7 +52,7 @@ export function AddBudgetDialog({ mois }: { mois: string }) {
               </div>
               <div className="space-y-1.5">
                 <Label>Montant prévu (CHF)</Label>
-                <Input name="montant" type="number" min="0" step="50" defaultValue="0" />
+                <Input name="montant" type="number" min="0" step="0.01" defaultValue="0" />
               </div>
             </div>
             <Button type="submit" disabled={isPending} className="w-full bg-indigo-600 hover:bg-indigo-700">
@@ -111,7 +111,7 @@ export function EditBudgetLine({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Montant prévu (CHF)</Label>
-              <Input name="montant" type="number" min="0" step="50" defaultValue={montantActuel} required />
+              <Input name="montant" type="number" min="0" step="0.01" defaultValue={montantActuel} required />
             </div>
             <div className="flex gap-2">
               <Button type="submit" disabled={isPending} className="flex-1 bg-indigo-600 hover:bg-indigo-700">
