@@ -1,18 +1,20 @@
 import { readSheet } from "@/lib/sheets";
-import { parseNum, fmtCHF, fmt, toMoisStr, FR_MONTHS } from "@/lib/utils";
+import { parseNum, fmtCHF, toMoisStr } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Landmark, Wallet, TrendingUp, TrendingDown } from "lucide-react";
+import { Landmark, Wallet, TrendingUp, PiggyBank, ArrowRight } from "lucide-react";
 import { DashboardCharts } from "@/components/dashboard-charts";
+import Link from "next/link";
 
 async function getDashboardData() {
-  const [accounts, transactions, budgets, invest, investRef] = await Promise.all([
+  const [accounts, transactions, budgets, invest, investRef, envelopes] = await Promise.all([
     readSheet("Comptes"),
     readSheet("Transactions"),
     readSheet("Budgets"),
     readSheet("Invest_Transactions"),
     readSheet("Invest_Referentiel"),
+    readSheet("Enveloppes"),
   ]);
 
   const now = new Date();
@@ -67,10 +69,25 @@ async function getDashboardData() {
     ...Object.entries(portfolioByClass).map(([name, value]) => ({ name, value: Math.round(value) })),
   ];
 
+  // Enveloppes d'épargne
+  const activeEnvelopes = envelopes.filter((e) => e["actif"] !== "false");
+  const totalEpargne = activeEnvelopes.reduce((s, e) => s + parseNum(e["montant_actuel"]), 0);
+  const nonAlloue = totalCash - totalEpargne;
+  const envelopesSummary = activeEnvelopes
+    .sort((a, b) => parseNum(b["montant_actuel"]) - parseNum(a["montant_actuel"]))
+    .slice(0, 5)
+    .map((e) => ({
+      nom: e["nom"],
+      montant: parseNum(e["montant_actuel"]),
+      objectif: parseNum(e["objectif"]),
+      couleur: e["couleur"] || "#6366f1",
+    }));
+
   return {
     totalCash, totalInvested, currentMonth,
     top5, allocation,
     budgetPrevu, depensesReelles, budgetPct,
+    totalEpargne, nonAlloue, envelopesSummary,
   };
 }
 
@@ -139,6 +156,64 @@ export default async function DashboardPage() {
         allocation={data.allocation}
         top5={data.top5}
       />
+
+      {/* Épargne fléchée */}
+      {data.envelopesSummary.length > 0 && (
+        <Link href="/enveloppes" className="block">
+          <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <PiggyBank size={15} className="text-indigo-400" />
+                  Épargne fléchée
+                </CardTitle>
+                <div className="flex items-center gap-3 text-sm text-slate-500">
+                  <span className="tabular-nums font-semibold">{fmtCHF(data.totalEpargne)}</span>
+                  <span className="text-slate-300">·</span>
+                  <span className={`text-xs font-medium ${data.nonAlloue < 0 ? "text-red-500" : "text-emerald-600"}`}>
+                    Non alloué : {fmtCHF(data.nonAlloue)}
+                  </span>
+                  <ArrowRight size={14} className="text-slate-300" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-5 space-y-2.5">
+              {data.envelopesSummary.map((env) => {
+                const pct = env.objectif > 0
+                  ? Math.min(Math.round((env.montant / env.objectif) * 100), 100)
+                  : 0;
+                return (
+                  <div key={env.nom} className="space-y-1">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ background: env.couleur }}
+                        />
+                        {env.nom}
+                      </span>
+                      <span className="tabular-nums">
+                        {fmtCHF(env.montant)}
+                        {env.objectif > 0 && (
+                          <span className="text-slate-300 ml-1">/ {fmtCHF(env.objectif)}</span>
+                        )}
+                      </span>
+                    </div>
+                    {env.objectif > 0 && (
+                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, background: env.couleur }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {/* Budget santé */}
       {data.budgetPrevu > 0 && (
