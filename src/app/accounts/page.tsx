@@ -1,7 +1,7 @@
 import { readSheet } from "@/lib/sheets";
 import { parseNum, fmtCHF } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { AddAccountDialog, TransferDialog } from "@/components/account-forms";
 
 export default async function AccountsPage() {
   const accounts = await readSheet("Comptes");
@@ -10,16 +10,24 @@ export default async function AccountsPage() {
 
   return (
     <div className="p-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Comptes Bancaires</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Vue de tes liquidités</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Comptes Bancaires</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Vue de tes liquidités</p>
+        </div>
+        <div className="flex gap-2">
+          <TransferDialog accounts={active} />
+          <AddAccountDialog />
+        </div>
       </div>
 
       <Card className="border-0 shadow-sm bg-gradient-to-br from-indigo-600 to-violet-600 text-white">
         <CardContent className="p-6">
           <p className="text-sm font-medium text-indigo-200">Total Cash</p>
           <p className="text-4xl font-bold tabular-nums mt-1">{fmtCHF(totalCash)}</p>
-          <p className="text-sm text-indigo-200 mt-1">{active.length} compte{active.length > 1 ? "s" : ""} actif{active.length > 1 ? "s" : ""}</p>
+          <p className="text-sm text-indigo-200 mt-1">
+            {active.length} compte{active.length > 1 ? "s" : ""} actif{active.length > 1 ? "s" : ""}
+          </p>
         </CardContent>
       </Card>
 

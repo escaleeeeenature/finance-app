@@ -49,3 +49,30 @@ export async function writeSheet(sheetName: string, data: Record<string, string>
     requestBody: { values: rows },
   });
 }
+
+export async function appendRow(sheetName: string, row: Record<string, string>) {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const values = Object.values(row);
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${sheetName}!A1`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: [values] },
+  });
+}
+
+export async function updateSheetRow(
+  sheetName: string,
+  rowIndex: number, // 0-based data row (0 = first data row after header)
+  updates: Record<string, string>
+) {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const existing = await readSheet(sheetName);
+  if (rowIndex >= existing.length) return;
+  const updated = { ...existing[rowIndex], ...updates };
+  existing[rowIndex] = updated;
+  await writeSheet(sheetName, existing);
+}
