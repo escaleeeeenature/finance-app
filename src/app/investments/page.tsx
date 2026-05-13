@@ -149,7 +149,7 @@ export default async function InvestmentsPage() {
 
   // ── XIRR global ──────────────────────────────────────────────────
   const xirrGlobal = computeXIRR({
-    transactions: invest.map((r) => ({
+    transactions: invest.filter((r) => r["date"]).map((r) => ({
       date: r["date"],
       type: r["Type"],
       quantite: parseNum(r["Quantité"]),
@@ -166,7 +166,7 @@ export default async function InvestmentsPage() {
   // ── XIRR par position ────────────────────────────────────────────
   const xirrByTicker: Record<string, ReturnType<typeof computeXIRR>> = {};
   for (const pos of positions) {
-    const txs = invest.filter((r) => r["Symbole"] === pos.ticker);
+    const txs = invest.filter((r) => r["Symbole"] === pos.ticker && r["date"]);
     const divs = dividendesRows.filter((r) => r["symbole"] === pos.ticker);
     xirrByTicker[pos.ticker] = computeXIRR({
       transactions: txs.map((r) => ({

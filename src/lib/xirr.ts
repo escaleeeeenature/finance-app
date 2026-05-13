@@ -55,7 +55,8 @@ export function xirr(cashFlows: CashFlow[]): number | null {
 }
 
 // Parse dd/mm/yyyy → Date
-export function parseAppDate(dateStr: string): Date {
+export function parseAppDate(dateStr: string | undefined | null): Date {
+  if (!dateStr) return new Date();
   const parts = dateStr.split("/");
   if (parts.length !== 3) return new Date();
   return new Date(+parts[2], +parts[1] - 1, +parts[0]);
