@@ -12,6 +12,7 @@ import {
 import { DashboardCharts } from "@/components/dashboard-charts";
 import { NetWorthChart } from "@/components/net-worth-chart";
 import { SnapshotButton } from "@/components/snapshot-button";
+import { RefreshButton } from "@/components/refresh-button";
 import { fetchPrices, fetchToChf } from "@/lib/prices";
 import Link from "next/link";
 
@@ -348,7 +349,10 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold text-slate-900">Tableau de Bord</h1>
           <p className="text-sm text-slate-500 mt-0.5">{data.currentMonth}</p>
         </div>
-        <SnapshotButton />
+        <div className="flex gap-2">
+          <RefreshButton />
+          <SnapshotButton />
+        </div>
       </div>
 
       {/* KPIs row 1 */}

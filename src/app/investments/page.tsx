@@ -10,6 +10,7 @@ import { fetchPrices, fetchToChf } from "@/lib/prices";
 import { ETFLookthrough } from "@/components/etf-lookthrough";
 import { ETF_DATA } from "@/lib/etf-composition";
 import { computeXIRR } from "@/lib/xirr";
+import { RefreshButton } from "@/components/refresh-button";
 import { Activity } from "lucide-react";
 import Link from "next/link";
 
@@ -208,6 +209,7 @@ export default async function InvestmentsPage() {
           <p className="text-sm text-slate-500 mt-0.5">{positions.length} position{positions.length !== 1 ? "s" : ""} ouverte{positions.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <RefreshButton />
           <Link href="/import">
             <button className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all">
               Import Swissquote
