@@ -222,34 +222,57 @@ export default async function InvestmentsPage() {
 
       {/* Hero */}
       <Card className="border-0 shadow-sm bg-gradient-to-br from-slate-900 to-indigo-900 text-white overflow-hidden">
-        <CardContent className="p-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div>
-              <p className="text-xs text-slate-400 mb-1">Valeur totale</p>
-              <p className="text-3xl font-bold tabular-nums">{fmtCHF(totalValeur)}</p>
-              <p className="text-xs text-slate-400 mt-1">Coût : {fmtCHF(totalCout)}</p>
+        <CardContent className="p-6 space-y-5">
+          {/* Ligne principale : investi → valeur actuelle */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Investi */}
+            <div className="flex-1 min-w-[140px]">
+              <p className="text-xs text-slate-400 mb-1">Tu as investi</p>
+              <p className="text-3xl font-bold tabular-nums">{fmtCHF(totalCout)}</p>
+              <p className="text-xs text-slate-500 mt-0.5">sorti de ta poche</p>
             </div>
-            <div>
-              <p className="text-xs text-slate-400 mb-1">Plus-value brute</p>
-              <p className={`text-2xl font-bold tabular-nums ${totalPerf >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+
+            {/* Flèche + variation */}
+            <div className="flex flex-col items-center gap-1 px-2">
+              <div className={`flex items-center gap-1 text-sm font-bold tabular-nums ${totalPerf >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {totalPerf >= 0 ? "+" : ""}{fmtCHF(totalPerf)}
-              </p>
-              <p className={`text-xs ${totalPerf >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              </div>
+              <div className="text-slate-600 text-lg">→</div>
+              <div className={`text-xs font-semibold tabular-nums ${totalPerf >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {totalPerfPct >= 0 ? "+" : ""}{totalPerfPct.toFixed(2)}%
+              </div>
+            </div>
+
+            {/* Valeur actuelle */}
+            <div className="flex-1 min-w-[140px] text-right">
+              <p className="text-xs text-slate-400 mb-1">Si tu vends tout</p>
+              <p className={`text-3xl font-bold tabular-nums ${totalPerf >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                {fmtCHF(totalValeur)}
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">valeur actuelle</p>
+            </div>
+          </div>
+
+          {/* Ligne secondaire : frais + perf nette */}
+          <div className="flex gap-6 pt-4 border-t border-slate-700/50">
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Frais {currentYear}</p>
+              <p className="text-sm font-semibold text-orange-400 tabular-nums">
+                -{fmtCHF(totalFrais)}
+                <span className="text-xs font-normal text-orange-500 ml-1">({fraisRatio.toFixed(2)}%)</span>
               </p>
             </div>
-            <div>
-              <p className="text-xs text-slate-400 mb-1">Frais {currentYear}</p>
-              <p className="text-2xl font-bold text-orange-400 tabular-nums">-{fmtCHF(totalFrais)}</p>
-              <p className="text-xs text-orange-400">{fraisRatio.toFixed(2)}% du portefeuille</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 mb-1">Performance nette</p>
-              <p className={`text-2xl font-bold tabular-nums ${perfNette >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {totalDividendes > 0 && (
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">Dividendes</p>
+                <p className="text-sm font-semibold text-emerald-400 tabular-nums">+{fmtCHF(totalDividendes)}</p>
+              </div>
+            )}
+            <div className="ml-auto text-right">
+              <p className="text-xs text-slate-400 mb-0.5">Performance nette</p>
+              <p className={`text-sm font-semibold tabular-nums ${perfNette >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {perfNette >= 0 ? "+" : ""}{fmtCHF(perfNette)}
-              </p>
-              <p className={`text-xs ${perfNette >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                après frais{totalDividendes > 0 ? " + dividendes" : ""}
+                <span className="text-xs font-normal ml-1">après frais{totalDividendes > 0 ? " + dividendes" : ""}</span>
               </p>
             </div>
           </div>
