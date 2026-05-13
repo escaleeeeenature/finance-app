@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Upload } from "lucide-react";
 import { ImportWizard } from "@/components/import-wizard";
 

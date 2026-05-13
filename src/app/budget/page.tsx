@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { readSheet } from "@/lib/sheets";
 import { parseNum, fmtCHF, toMoisStr } from "@/lib/utils";

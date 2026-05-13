@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { readSheet } from "@/lib/sheets";
 import { parseNum, toMoisStr } from "@/lib/utils";
 import { Flame } from "lucide-react";

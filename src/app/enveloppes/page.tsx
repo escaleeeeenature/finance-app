@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { readSheet } from "@/lib/sheets";
 import { parseNum, fmtCHF, toMoisStr } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
