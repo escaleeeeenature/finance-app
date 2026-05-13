@@ -7,6 +7,8 @@ import { AddInvestDialog, ManualPriceDialog } from "@/components/investment-form
 import { fetchPrices, fetchToChf } from "@/lib/prices";
 import { ETFLookthrough } from "@/components/etf-lookthrough";
 import { ETF_DATA } from "@/lib/etf-composition";
+import { computeXIRR } from "@/lib/xirr";
+import { Activity } from "lucide-react";
 import Link from "next/link";
 
 function PerfBadge({ value, pct }: { value: number; pct: number }) {
@@ -144,6 +146,40 @@ export default async function InvestmentsPage() {
     acc[r["symbole"]] = (acc[r["symbole"]] ?? 0) + parseNum(r["montant"]);
     return acc;
   }, {});
+
+  // ── XIRR global ──────────────────────────────────────────────────
+  const xirrGlobal = computeXIRR({
+    transactions: invest.map((r) => ({
+      date: r["date"],
+      type: r["Type"],
+      quantite: parseNum(r["Quantité"]),
+      prixUnitaire: parseNum(r["Prix_Unitaire"]),
+      frais: parseNum(r["Frais"]),
+    })),
+    currentValueChf: totalValeur,
+    dividendes: dividendesRows.map((r) => ({
+      date: r["date"],
+      montant: parseNum(r["montant"]),
+    })),
+  });
+
+  // ── XIRR par position ────────────────────────────────────────────
+  const xirrByTicker: Record<string, ReturnType<typeof computeXIRR>> = {};
+  for (const pos of positions) {
+    const txs = invest.filter((r) => r["Symbole"] === pos.ticker);
+    const divs = dividendesRows.filter((r) => r["symbole"] === pos.ticker);
+    xirrByTicker[pos.ticker] = computeXIRR({
+      transactions: txs.map((r) => ({
+        date: r["date"],
+        type: r["Type"],
+        quantite: parseNum(r["Quantité"]),
+        prixUnitaire: parseNum(r["Prix_Unitaire"]),
+        frais: parseNum(r["Frais"]),
+      })),
+      currentValueChf: pos.valeurChf,
+      dividendes: divs.map((r) => ({ date: r["date"], montant: parseNum(r["montant"]) })),
+    });
+  }
 
   // ── Performance nette ─────────────────────────────────────────────
   const perfNette = totalPerf - totalFrais + totalDividendes;
@@ -292,6 +328,76 @@ export default async function InvestmentsPage() {
 
       {positions.length === 0 && (
         <p className="text-sm text-slate-400 text-center py-12">Aucune position ouverte</p>
+      )}
+
+      {/* TRI / XIRR */}
+      {xirrGlobal && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <Activity size={15} className="text-indigo-400" />
+              Performance réelle — TRI annualisé
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {/* TRI global */}
+              <div>
+                <p className="text-xs text-slate-400 mb-1">TRI global</p>
+                <p className={`text-3xl font-bold tabular-nums ${xirrGlobal.pct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {xirrGlobal.pct >= 0 ? "+" : ""}{xirrGlobal.pct.toFixed(1)}%
+                  <span className="text-sm font-normal text-slate-400 ml-1">/an</span>
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  sur {Math.round(xirrGlobal.months)} mois de détention
+                </p>
+              </div>
+
+              {/* Simple return (non annualisé) */}
+              <div>
+                <p className="text-xs text-slate-400 mb-1">Rendement simple</p>
+                <p className={`text-3xl font-bold tabular-nums ${totalPerfPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {totalPerfPct >= 0 ? "+" : ""}{totalPerfPct.toFixed(1)}%
+                </p>
+                <p className="text-xs text-slate-400 mt-1">total non annualisé</p>
+              </div>
+
+              {/* Performance nette après frais */}
+              <div>
+                <p className="text-xs text-slate-400 mb-1">Après frais & dividendes</p>
+                <p className={`text-3xl font-bold tabular-nums ${perfNette >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {perfNette >= 0 ? "+" : ""}{fmtCHF(perfNette)}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">gain net réel</p>
+              </div>
+
+              {/* TRI par ticker */}
+              <div>
+                <p className="text-xs text-slate-400 mb-2">TRI par position</p>
+                <div className="space-y-1.5">
+                  {positions.map((pos) => {
+                    const r = xirrByTicker[pos.ticker];
+                    if (!r) return null;
+                    return (
+                      <div key={pos.ticker} className="flex justify-between items-center">
+                        <span className="text-xs font-medium text-slate-600">{pos.ticker}</span>
+                        <span className={`text-xs font-bold tabular-nums ${r.pct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                          {r.pct >= 0 ? "+" : ""}{r.pct.toFixed(1)}%/an
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 rounded-xl bg-slate-50 text-xs text-slate-500">
+              <strong>TRI (Taux de Rendement Interne)</strong> — contrairement au rendement simple,
+              le TRI tient compte du <em>moment</em> où tu as investi chaque franc.
+              Un investissement de 1 000 CHF en janvier rapporte plus qu&apos;en décembre sur la même année.
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* ETF Look-through */}
