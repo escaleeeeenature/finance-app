@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ArrowLeftRight, Target,
-  TrendingUp, Landmark, ChevronLeft, ChevronRight, Menu, X, PiggyBank
+  TrendingUp, Landmark, ChevronLeft, ChevronRight, Menu, X, PiggyBank, Flame
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/investments", label: "Investissements",   icon: TrendingUp },
   { href: "/accounts",    label: "Comptes Bancaires", icon: Landmark },
   { href: "/enveloppes",  label: "Enveloppes",        icon: PiggyBank },
+  { href: "/fire",        label: "Simulateur FIRE",   icon: Flame },
 ];
 
 export function Sidebar() {
