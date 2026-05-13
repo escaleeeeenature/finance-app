@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, Wifi, WifiOff, Receipt, Gift } from "lucide-react";
 import { AddInvestDialog, ManualPriceDialog } from "@/components/investment-forms";
 import { fetchPrices, fetchToChf } from "@/lib/prices";
+import { ETFLookthrough } from "@/components/etf-lookthrough";
+import { ETF_DATA } from "@/lib/etf-composition";
 import Link from "next/link";
 
 function PerfBadge({ value, pct }: { value: number; pct: number }) {
@@ -291,6 +293,16 @@ export default async function InvestmentsPage() {
       {positions.length === 0 && (
         <p className="text-sm text-slate-400 text-center py-12">Aucune position ouverte</p>
       )}
+
+      {/* ETF Look-through */}
+      {(() => {
+        const etfCompositions = positions
+          .filter((p) => ETF_DATA[p.ticker])
+          .map((p) => ({ etf: ETF_DATA[p.ticker], valeurChf: p.valeurChf }));
+        return etfCompositions.length > 0
+          ? <ETFLookthrough compositions={etfCompositions} />
+          : null;
+      })()}
 
       {/* Coûts & Revenus */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
