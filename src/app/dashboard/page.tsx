@@ -5,16 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Landmark, Wallet, TrendingUp, PiggyBank, ArrowRight } from "lucide-react";
 import { DashboardCharts } from "@/components/dashboard-charts";
+import { NetWorthChart } from "@/components/net-worth-chart";
+import { SnapshotButton } from "@/components/snapshot-button";
 import Link from "next/link";
 
 async function getDashboardData() {
-  const [accounts, transactions, budgets, invest, investRef, envelopes] = await Promise.all([
+  const [accounts, transactions, budgets, invest, investRef, envelopes, historyRaw] = await Promise.all([
     readSheet("Comptes"),
     readSheet("Transactions"),
     readSheet("Budgets"),
     readSheet("Invest_Transactions"),
     readSheet("Invest_Referentiel"),
     readSheet("Enveloppes"),
+    readSheet("Historique"),
   ]);
 
   const now = new Date();
@@ -83,11 +86,21 @@ async function getDashboardData() {
       couleur: e["couleur"] || "#6366f1",
     }));
 
+  // Historique patrimoine
+  const history = historyRaw.map((r) => ({
+    date: r["date"],
+    patrimoine_net: parseNum(r["patrimoine_net"]),
+    cash: parseNum(r["cash"]),
+    investi: parseNum(r["investi"]),
+    epargne: parseNum(r["epargne"]),
+  }));
+
   return {
     totalCash, totalInvested, currentMonth,
     top5, allocation,
     budgetPrevu, depensesReelles, budgetPct,
     totalEpargne, nonAlloue, envelopesSummary,
+    history,
   };
 }
 
@@ -124,9 +137,12 @@ export default async function DashboardPage() {
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Tableau de Bord</h1>
-        <p className="text-sm text-slate-500 mt-0.5">{data.currentMonth}</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Tableau de Bord</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{data.currentMonth}</p>
+        </div>
+        <SnapshotButton />
       </div>
 
       {/* KPIs */}
@@ -150,6 +166,9 @@ export default async function DashboardPage() {
           iconColor="bg-violet-500"
         />
       </div>
+
+      {/* Net Worth History */}
+      <NetWorthChart history={data.history} />
 
       {/* Charts */}
       <DashboardCharts
