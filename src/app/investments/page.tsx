@@ -124,19 +124,23 @@ export default async function InvestmentsPage() {
   // ── Frais analytics ──────────────────────────────────────────────
   const currentYear = new Date().getFullYear().toString();
 
-  const fraisAnnee = fraisRows.filter((r) => {
-    const y = r["date"]?.split("/")?.[2];
-    return y === currentYear;
-  });
+  // Extract year from both "dd/mm/yyyy" and "dd-mm-yyyy hh:mm" formats
+  function extractYear(dateStr: string | undefined): string | undefined {
+    if (!dateStr) return undefined;
+    const slash = dateStr.split("/");
+    if (slash.length >= 3) return slash[2]?.substring(0, 4);
+    const dash = dateStr.split("-");
+    if (dash.length >= 3) return dash[2]?.substring(0, 4); // dd-mm-yyyy HH:MM
+    return undefined;
+  }
+
+  const fraisAnnee = fraisRows.filter((r) => extractYear(r["date"]) === currentYear);
   const totalFraisGarde = fraisAnnee
     .filter((r) => r["type"] === "Droits de Garde")
     .reduce((s, r) => s + parseNum(r["montant"]), 0);
 
   const totalFraisTx = invest
-    .filter((r) => {
-      const y = r["date"]?.split("/")?.[2];
-      return y === currentYear;
-    })
+    .filter((r) => extractYear(r["date"]) === currentYear)
     .reduce((s, r) => s + parseNum(r["Frais"]), 0);
 
   const totalFrais = totalFraisGarde + totalFraisTx;
