@@ -11,6 +11,7 @@ export async function addInvestTransaction(formData: FormData) {
   const qte = formData.get("qte") as string;
   const prix = formData.get("prix") as string;
   const frais = formData.get("frais") as string;
+  const ter = formData.get("ter") as string;          // TER en %, ex: "0.07"
   const compte = formData.get("compte") as string;
   const categorie = formData.get("categorie") as string;
   const isStockInitial = formData.get("isStockInitial") === "true";
@@ -21,6 +22,23 @@ export async function addInvestTransaction(formData: FormData) {
   const prixNum = parseNum(prix);
   const fraisNum = parseNum(frais || "0");
   const montant = type === "Achat" ? qteNum * prixNum + fraisNum : qteNum * prixNum - fraisNum;
+
+  // Upsert TER in Invest_Referentiel if provided
+  const terNum = parseNum(ter || "0");
+  const refUpdate = (async () => {
+    if (terNum <= 0) return;
+    const ref = await readSheet("Invest_Referentiel");
+    const idx = ref.findIndex((r) => r["Symbole"] === symbole);
+    if (idx !== -1) {
+      ref[idx]["TER"] = ter;
+      await writeSheet("Invest_Referentiel", ref);
+    } else {
+      await appendRow("Invest_Referentiel", {
+        Symbole: symbole, Classe: classe, Manuel: "FALSE",
+        Prix_Manuel: "", Devise: "CHF", TER: ter,
+      });
+    }
+  })();
 
   const investRow = appendRow("Invest_Transactions", {
     Date: date, Type: type, Classe: classe, Symbole: symbole,
@@ -37,9 +55,9 @@ export async function addInvestTransaction(formData: FormData) {
       await writeSheet("Comptes", accounts);
     }
 
-    // Parallelize the two independent sheet appends
     await Promise.all([
       investRow,
+      refUpdate,
       appendRow("Transactions", {
         Date: date, "Libellé": `${type} ${symbole}`, Montant: montant.toString(),
         "Catégorie": categorie, Compte_Source: compte, Statut: "Validé",
@@ -47,7 +65,7 @@ export async function addInvestTransaction(formData: FormData) {
       }),
     ]);
   } else {
-    await investRow;
+    await Promise.all([investRow, refUpdate]);
   }
 
   revalidatePath("/investments");

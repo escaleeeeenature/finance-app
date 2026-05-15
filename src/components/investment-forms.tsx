@@ -109,9 +109,28 @@ export function AddInvestDialog({
                 <Input name="prix" type="number" min="0" step="0.01" placeholder="0.00" required />
               </div>
               <div className="space-y-1.5">
-                <Label>Frais (CHF)</Label>
+                <Label>Frais transaction (CHF)</Label>
                 <Input name="frais" type="number" min="0" step="0.01" defaultValue="0" />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Label>TER — frais annuels du fond (%)</Label>
+                <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-medium">Important</span>
+              </div>
+              <Input
+                name="ter"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="ex: 0.07 pour un ETF S&P 500, 1.50 pour un fond actif"
+              />
+              <p className="text-xs text-slate-400">
+                Frais prélevés automatiquement dans le fond chaque année (invisible sur ton relevé).
+                Trouve ce chiffre sur le site de l&apos;émetteur ou sur justETF.com.
+                Laisse vide si inconnu.
+              </p>
             </div>
 
             {!isStockInitial && (

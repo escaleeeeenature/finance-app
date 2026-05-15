@@ -11,6 +11,7 @@ import { ETFLookthrough } from "@/components/etf-lookthrough";
 import { ETF_DATA } from "@/lib/etf-composition";
 import { computeXIRR } from "@/lib/xirr";
 import { RefreshButton } from "@/components/refresh-button";
+import { FeeAnalysis } from "@/components/fee-analysis";
 import { Activity } from "lucide-react";
 import Link from "next/link";
 
@@ -193,6 +194,37 @@ export default async function InvestmentsPage() {
   const perfNettePct = totalCout > 0 ? (perfNette / totalCout) * 100 : 0;
 
   const classes = [...new Set(positions.map((p) => p.classe))];
+
+  // ── Analyse des frais par classe ──────────────────────────────────
+  const classFeeData = classes.map((classe) => {
+    const classPositions = positions.filter((p) => p.classe === classe);
+    const classeVal = classPositions.reduce((s, p) => s + p.valeurChf, 0);
+
+    // Transaction fees for this class this year
+    const txFees = invest
+      .filter((r) => r["Classe"] === classe && extractYear(r["date"]) === currentYear)
+      .reduce((s, r) => s + parseNum(r["Frais"]), 0);
+
+    // Custody fees distributed proportionally by class weight
+    const custodyFees = totalValeur > 0 ? (classeVal / totalValeur) * totalFraisGarde : 0;
+
+    // TER cost: TER% × current value for each position
+    let terCost = 0;
+    let hasTer = false;
+    for (const pos of classPositions) {
+      const ref = investRef.find((r) => r["Symbole"] === pos.ticker);
+      const ter = parseNum(ref?.["TER"] ?? "0");
+      if (ter > 0) {
+        terCost += (ter / 100) * pos.valeurChf;
+        hasTer = true;
+      }
+    }
+
+    const totalAnnual = txFees + custodyFees + terCost;
+    const rate = classeVal > 0 ? (totalAnnual / classeVal) * 100 : 0;
+
+    return { classe, valeur: classeVal, txFees, custodyFees, terCost, totalAnnual, rate, hasTer };
+  });
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto">
@@ -430,6 +462,9 @@ export default async function InvestmentsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Analyse des frais */}
+      <FeeAnalysis data={classFeeData} totalValeur={totalValeur} />
 
       {/* ETF Look-through */}
       {(() => {
