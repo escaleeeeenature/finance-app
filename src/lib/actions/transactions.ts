@@ -3,6 +3,63 @@ import { revalidatePath } from "next/cache";
 import { readSheet, appendRow, writeSheet } from "@/lib/sheets";
 import { parseNum, isoToAppDate } from "@/lib/utils";
 
+function applyBalance(
+  accounts: Record<string, string>[],
+  compte: string,
+  type: string,
+  montant: number,
+  direction: 1 | -1  // 1 = apply, -1 = reverse
+) {
+  if (type === "Transfert") return; // Transferts handled separately
+  const idx = accounts.findIndex((a) => a["Banque"] === compte);
+  if (idx === -1) return;
+  const delta = (type === "Revenu" ? montant : -montant) * direction;
+  accounts[idx]["Solde_Initial"] = (parseNum(accounts[idx]["Solde_Initial"]) + delta).toString();
+}
+
+export async function updateTransaction(
+  rowIdx: number,
+  data: { date: string; libelle: string; montant: string; categorie: string; compte: string; type: string }
+) {
+  const [allTx, accounts] = await Promise.all([readSheet("Transactions"), readSheet("Comptes")]);
+  if (rowIdx < 0 || rowIdx >= allTx.length) return { error: "Ligne introuvable" };
+
+  const old = allTx[rowIdx];
+  // Reverse old balance impact
+  applyBalance(accounts, old["Compte_Source"], old["Type"], parseNum(old["Montant"]), -1);
+  // Apply new balance impact
+  applyBalance(accounts, data.compte, data.type, parseNum(data.montant), 1);
+
+  allTx[rowIdx] = {
+    ...old,
+    Date: data.date,
+    "Libellé": data.libelle,
+    Montant: data.montant,
+    "Catégorie": data.categorie,
+    Compte_Source: data.compte,
+    Type: data.type,
+  };
+
+  await Promise.all([writeSheet("Transactions", allTx), writeSheet("Comptes", accounts)]);
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
+  revalidatePath("/accounts");
+}
+
+export async function deleteTransaction(rowIdx: number) {
+  const [allTx, accounts] = await Promise.all([readSheet("Transactions"), readSheet("Comptes")]);
+  if (rowIdx < 0 || rowIdx >= allTx.length) return { error: "Ligne introuvable" };
+
+  const old = allTx[rowIdx];
+  applyBalance(accounts, old["Compte_Source"], old["Type"], parseNum(old["Montant"]), -1);
+
+  const newTx = allTx.filter((_, i) => i !== rowIdx);
+  await Promise.all([writeSheet("Transactions", newTx), writeSheet("Comptes", accounts)]);
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
+  revalidatePath("/accounts");
+}
+
 export async function addTransaction(formData: FormData) {
   const type = formData.get("type") as string;
   const compte = formData.get("compte") as string;

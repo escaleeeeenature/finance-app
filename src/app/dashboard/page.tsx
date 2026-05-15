@@ -17,7 +17,7 @@ import { fetchPrices, fetchToChf } from "@/lib/prices";
 import Link from "next/link";
 
 async function getDashboardData() {
-  const [accounts, transactions, budgets, invest, investRef, envelopes, historyRaw] = await Promise.all([
+  const [accounts, transactions, budgets, invest, investRef, envelopes, historyRaw, fraisRows] = await Promise.all([
     readSheet("Comptes"),
     readSheet("Transactions"),
     readSheet("Budgets"),
@@ -25,6 +25,7 @@ async function getDashboardData() {
     readSheet("Invest_Referentiel"),
     readSheet("Enveloppes"),
     readSheet("Historique"),
+    readSheet("Frais_Courtier"),
   ]);
 
   const now = new Date();
@@ -34,7 +35,7 @@ async function getDashboardData() {
   const activeAccounts = accounts.filter((a) => a["Statut"] === "Actif");
   const totalCash = activeAccounts.reduce((s, a) => s + parseNum(a["Solde_Initial"]), 0);
   const accountsData = activeAccounts.map((a) => ({
-    nom: a["Nom"] || a["nom"] || "Compte",
+    nom: a["Banque"] || a["Nom"] || a["nom"] || "Compte",
     solde: parseNum(a["Solde_Initial"]),
     type: a["Type"] || "",
   }));
@@ -75,7 +76,7 @@ async function getDashboardData() {
   for (const [c, r] of fxEntries) fxMap[c as string] = r as number;
 
   // ── Performance par classe ────────────────────────────────────────────────
-  const classePerf: Record<string, { cout: number; valeur: number; hasLive: boolean }> = {};
+  const classePerf: Record<string, { cout: number; valeur: number; hasLive: boolean; frais: number }> = {};
   let totalInvested = 0;
   const portfolioByClass: Record<string, number> = {};
 
@@ -84,7 +85,7 @@ async function getDashboardData() {
     const fx = fxMap[pos.currency] ?? 1;
     const valeurChf = priceData ? priceData.price * pos.quantite * fx : pos.cout;
 
-    if (!classePerf[pos.classe]) classePerf[pos.classe] = { cout: 0, valeur: 0, hasLive: false };
+    if (!classePerf[pos.classe]) classePerf[pos.classe] = { cout: 0, valeur: 0, hasLive: false, frais: 0 };
     classePerf[pos.classe].cout += pos.cout;
     classePerf[pos.classe].valeur += valeurChf;
     if (priceData) classePerf[pos.classe].hasLive = true;
@@ -94,6 +95,30 @@ async function getDashboardData() {
   }
 
   const totalInvestedLive = Object.values(classePerf).reduce((s, c) => s + c.valeur, 0);
+
+  // ── Frais Swissquote — répartis proportionnellement par classe ────────────
+  function extractYear(d: string | undefined) {
+    if (!d) return "";
+    const slash = d.split("/"); if (slash.length >= 3) return slash[2]?.substring(0, 4);
+    const dash  = d.split("-"); if (dash.length  >= 3) return dash[2]?.substring(0, 4);
+    return "";
+  }
+  const currentYear = new Date().getFullYear().toString();
+  const totalFraisGarde = fraisRows
+    .filter((r) => extractYear(r["date"]) === currentYear)
+    .reduce((s, r) => s + parseNum(r["montant"]), 0);
+  const totalFraisTx = invest
+    .filter((r) => extractYear(r["date"]) === currentYear)
+    .reduce((s, r) => s + parseNum(r["Frais"]), 0);
+  const totalFrais = totalFraisGarde + totalFraisTx;
+
+  // Distribute fees proportionally by class weight
+  if (totalFrais > 0 && totalInvestedLive > 0) {
+    for (const classe of Object.keys(classePerf)) {
+      const weight = classePerf[classe].valeur / totalInvestedLive;
+      classePerf[classe].frais = totalFrais * weight;
+    }
+  }
 
   // ── Dépenses du mois ──────────────────────────────────────────────────────
   const depenses = transactions.filter((t) => {
@@ -155,20 +180,20 @@ async function getDashboardData() {
     : budgetRatio <= 0.9 ? 80
     : budgetRatio <= 1.0 ? 60 : 20;
 
-  // 3. Fonds d'urgence (30%) — cash vs dépenses mensuelles moyennes
-  const avgMonthlyExp = savingsRates.length > 0
-    ? transactions
-        .filter((t) => {
-          if (t["Type"] !== "Dépense") return false;
-          try {
-            const p = t["Date"].split("/");
-            const d = new Date(+p[2], +p[1] - 1, +p[0]);
-            const monthsAgo = (now.getTime() - d.getTime()) / (30.44 * 24 * 3600 * 1000);
-            return monthsAgo <= 6;
-          } catch { return false; }
-        })
-        .reduce((s, t) => s + parseNum(t["Montant"]), 0) / 6
-    : 0;
+  // 3. Fonds d'urgence (30%) — cash total / dépenses mensuelles moyennes sur 6 mois
+  const avgMonthlyExp = transactions
+    .filter((t) => {
+      if (t["Type"] !== "Dépense") return false;
+      try {
+        const p = t["Date"].split("/");
+        const d = new Date(+p[2], +p[1] - 1, +p[0]);
+        const monthsAgo = (now.getTime() - d.getTime()) / (30.44 * 24 * 3600 * 1000);
+        return monthsAgo <= 6;
+      } catch { return false; }
+    })
+    .reduce((s, t) => s + parseNum(t["Montant"]), 0) / 6;
+
+  // monthsOfCash = cash uniquement (pas les investissements)
   const monthsOfCash = avgMonthlyExp > 0 ? totalCash / avgMonthlyExp : 0;
   const urgenceScore = monthsOfCash >= 6 ? 100 : monthsOfCash >= 3 ? 70 : monthsOfCash >= 1 ? 40 : 0;
 
@@ -296,13 +321,14 @@ function HealthScore({ score, monthsOfCash }: { score: number; monthsOfCash: num
 }
 
 function PerformanceCard({
-  classe, cout, valeur, hasLive,
+  classe, cout, valeur, hasLive, frais,
 }: {
-  classe: string; cout: number; valeur: number; hasLive: boolean;
+  classe: string; cout: number; valeur: number; hasLive: boolean; frais: number;
 }) {
   const plusValue = valeur - cout;
-  const pct = cout > 0 ? (plusValue / cout) * 100 : 0;
-  const isPos = plusValue >= 0;
+  const perfNette = plusValue - frais;
+  const pctNette = cout > 0 ? (perfNette / cout) * 100 : 0;
+  const isPos = perfNette >= 0;
 
   return (
     <Card className="border-0 shadow-sm">
@@ -312,22 +338,28 @@ function PerformanceCard({
           {hasLive ? (
             <span className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full font-medium">Live</span>
           ) : (
-            <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full font-medium">Coût</span>
+            <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full font-medium">Manuel</span>
           )}
         </div>
+        {/* Valeur actuelle */}
         <p className="text-lg font-bold text-slate-900 tabular-nums">{fmtCHF(valeur)}</p>
-        <div className="flex items-center gap-1.5 mt-1">
+        <p className="text-[10px] text-slate-400 mb-1.5">valeur actuelle</p>
+        {/* Perf nette */}
+        <div className="flex items-center gap-1.5">
           {isPos
             ? <TrendingUp size={12} className="text-emerald-500 shrink-0" />
             : <TrendingDown size={12} className="text-red-500 shrink-0" />
           }
           <span className={`text-xs font-semibold tabular-nums ${isPos ? "text-emerald-600" : "text-red-500"}`}>
-            {isPos ? "+" : ""}{fmtCHF(plusValue)}
+            {isPos ? "+" : ""}{fmtCHF(perfNette)}
           </span>
           <span className={`text-xs tabular-nums ${isPos ? "text-emerald-500" : "text-red-400"}`}>
-            ({isPos ? "+" : ""}{pct.toFixed(1)}%)
+            ({isPos ? "+" : ""}{pctNette.toFixed(1)}%)
           </span>
         </div>
+        {frais > 0 && (
+          <p className="text-[10px] text-slate-400 mt-0.5">après {fmtCHF(frais)} de frais</p>
+        )}
       </CardContent>
     </Card>
   );

@@ -2,13 +2,30 @@ export const dynamic = "force-dynamic";
 
 import { readSheet } from "@/lib/sheets";
 import { parseNum, fmtCHF } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { AddAccountDialog, TransferDialog } from "@/components/account-forms";
+import { AccountCard } from "@/components/account-card";
 
 export default async function AccountsPage() {
-  const accounts = await readSheet("Comptes");
+  const [accounts, transactions, budgets] = await Promise.all([
+    readSheet("Comptes"),
+    readSheet("Transactions"),
+    readSheet("Budgets"),
+  ]);
+
   const active = accounts.filter((a) => a["Statut"] === "Actif");
   const totalCash = active.reduce((s, a) => s + parseNum(a["Solde_Initial"]), 0);
+
+  // Sort transactions by date desc + keep original index
+  const sortedTx = (transactions
+    .map((t, i) => ({ ...t, _idx: String(i) })) as Record<string, string>[])
+    .sort((a, b) => {
+      const toTs = (s: string) => {
+        const [d, m, y] = (s || "01/01/2000").split("/");
+        return new Date(+y, +m - 1, +d).getTime();
+      };
+      return toTs(b["Date"]) - toTs(a["Date"]);
+    });
 
   return (
     <div className="p-8 space-y-6">
@@ -33,38 +50,25 @@ export default async function AccountsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-4">
         {active.map((acc, i) => {
           const solde = parseNum(acc["Solde_Initial"]);
           const pct = totalCash > 0 ? (solde / totalCash) * 100 : 0;
+          const accTx = sortedTx.filter(
+            (t) => t["Compte_Source"] === acc["Banque"] || t["Compte_Source"] === acc["Nom"]
+          );
           return (
-            <Card key={i} className="border-0 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-semibold text-slate-800">{acc["Banque"]}</p>
-                    <p className="text-xs text-slate-400">{acc["Type"]}</p>
-                  </div>
-                  <div
-                    className="h-3 w-3 rounded-full mt-1"
-                    style={{ background: acc["Couleur_Graphique"] || "#6366f1" }}
-                  />
-                </div>
-                <p className="text-2xl font-bold tabular-nums text-slate-900">{fmtCHF(solde)}</p>
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs text-slate-400 mb-1">
-                    <span>Part du total</span>
-                    <span>{Math.round(pct)}%</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, background: acc["Couleur_Graphique"] || "#6366f1" }}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <AccountCard
+              key={i}
+              nom={acc["Banque"] || acc["Nom"] || "Compte"}
+              type={acc["Type"] || ""}
+              solde={solde}
+              pct={pct}
+              couleur={acc["Couleur_Graphique"] || "#6366f1"}
+              transactions={accTx}
+              accounts={active}
+              budgets={budgets}
+            />
           );
         })}
       </div>
