@@ -180,18 +180,24 @@ async function getDashboardData() {
     : budgetRatio <= 0.9 ? 80
     : budgetRatio <= 1.0 ? 60 : 20;
 
-  // 3. Fonds d'urgence (30%) — cash total / dépenses mensuelles moyennes sur 6 mois
-  const avgMonthlyExp = transactions
-    .filter((t) => {
-      if (t["Type"] !== "Dépense") return false;
-      try {
-        const p = t["Date"].split("/");
-        const d = new Date(+p[2], +p[1] - 1, +p[0]);
-        const monthsAgo = (now.getTime() - d.getTime()) / (30.44 * 24 * 3600 * 1000);
-        return monthsAgo <= 6;
-      } catch { return false; }
-    })
-    .reduce((s, t) => s + parseNum(t["Montant"]), 0) / 6;
+  // 3. Fonds d'urgence (30%) — cash total / dépenses mensuelles moyennes
+  // On compte le nombre de mois distincts qui ont réellement des dépenses (max 6)
+  const monthsWithExp = new Set<string>();
+  let totalExp6m = 0;
+  for (const t of transactions) {
+    if (t["Type"] !== "Dépense") continue;
+    try {
+      const p = t["Date"].split("/");
+      const d = new Date(+p[2], +p[1] - 1, +p[0]);
+      const monthsAgo = (now.getTime() - d.getTime()) / (30.44 * 24 * 3600 * 1000);
+      if (monthsAgo <= 6) {
+        monthsWithExp.add(toMoisStr(d));
+        totalExp6m += parseNum(t["Montant"]);
+      }
+    } catch { /* skip */ }
+  }
+  const nbMoisExp = Math.max(monthsWithExp.size, 1);
+  const avgMonthlyExp = totalExp6m / nbMoisExp;
 
   // monthsOfCash = cash uniquement (pas les investissements)
   const monthsOfCash = avgMonthlyExp > 0 ? totalCash / avgMonthlyExp : 0;
