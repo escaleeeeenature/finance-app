@@ -292,7 +292,7 @@ export async function parseBCJFile(formData: FormData): Promise<{
   let text: string;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse") as (b: Buffer) => Promise<{ text: string }>;
+    const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Buffer) => Promise<{ text: string }>;
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await pdfParse(buffer);
     text = result.text;
