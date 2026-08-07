@@ -301,9 +301,15 @@ export async function parseBCJFile(formData: FormData): Promise<{
     const categorie = suggestCategory(libelle);
     const id = `${date}|${libelle}|${amount}`;
 
+    // Skip internal transfers to Revolut (balance already handled via soldeCalcule)
+    const isRevolutTransfer = direction === "debit" &&
+      (libelle.toLowerCase().includes("revolut") || firstLine.toLowerCase().includes("revolut"));
+
     rows.push({
       id, date, libelle, montant, type, categorie,
-      source: "BCJ", duplicate: existingKeys.has(id), skip: false,
+      source: "BCJ", duplicate: existingKeys.has(id),
+      skip: isRevolutTransfer,
+      skipReason: isRevolutTransfer ? "Virement interne vers Revolut" : undefined,
     });
   }
 
