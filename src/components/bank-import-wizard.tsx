@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, CheckCircle, AlertTriangle, X, Eye, EyeOff, Building2 } from "lucide-react";
-import { parseRevolutFile, parseBCJFile, confirmBankImport, type ParsedBankRow } from "@/lib/actions/bank-import";
+import { parseRevolutFile, parseBCJFile, parseBCJExcelFile, confirmBankImport, type ParsedBankRow } from "@/lib/actions/bank-import";
 
 const CATEGORIES = [
   "Alimentation", "Transport", "Restaurants & Bars", "Hébergement", "Voyage",
@@ -44,9 +44,13 @@ export function BankImportWizard({
     setError("");
     const fd = new FormData();
     fd.set("file", file);
-    const isPDF = file.name.toLowerCase().endsWith(".pdf");
+    const name = file.name.toLowerCase();
+    const isPDF  = name.endsWith(".pdf");
+    const isXLSX = name.endsWith(".xlsx") || name.endsWith(".xls");
     startParse(async () => {
-      const res = isPDF ? await parseBCJFile(fd) : await parseRevolutFile(fd);
+      const res = isPDF ? await parseBCJFile(fd)
+        : isXLSX && bank === "bcj" ? await parseBCJExcelFile(fd)
+        : await parseRevolutFile(fd);
       if (res.error) { setError(res.error); return; }
       setRows(res.rows ?? []);
       setSoldeCalcule(res.soldeCalcule);
@@ -91,7 +95,7 @@ export function BankImportWizard({
         onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
       >
         <input
-          ref={fileRef} type="file" accept={bank === "revolut" ? ".csv" : ".pdf"} className="hidden"
+          ref={fileRef} type="file" accept={bank === "revolut" ? ".csv" : ".pdf,.xlsx,.xls"} className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
         />
         <Upload size={28} className="mx-auto mb-3 text-slate-300" />
@@ -103,7 +107,7 @@ export function BankImportWizard({
         ) : (
           <>
             <p className="text-sm font-medium text-slate-600">Glisse ton relevé BCJ ici</p>
-            <p className="text-xs text-slate-400 mt-1">Format PDF · E-banking BCJ → Compte → Télécharger l&apos;extrait</p>
+            <p className="text-xs text-slate-400 mt-1">PDF (e-banking BCJ) ou Excel (généré par IA)</p>
           </>
         )}
         {isParsing && <p className="text-xs text-indigo-500 mt-3 animate-pulse">Analyse en cours...</p>}

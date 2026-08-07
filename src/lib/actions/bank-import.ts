@@ -160,6 +160,88 @@ export async function parseRevolutFile(formData: FormData): Promise<{
   return { rows, soldeCalcule };
 }
 
+// ── BCJ Excel (manual) parser ─────────────────────────────────────────────────
+// Expected columns: Date (dd/mm/yyyy), Libellé, Montant (neg=dépense), Type (opt)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const XLSX = require("xlsx") as typeof import("xlsx");
+
+export async function parseBCJExcelFile(formData: FormData): Promise<{
+  rows?: ParsedBankRow[];
+  soldeCalcule?: number;
+  error?: string;
+}> {
+  const file = formData.get("file") as File | null;
+  if (!file) return { error: "Fichier manquant" };
+
+  let rows2d: string[][];
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rows2d = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: "" });
+  } catch {
+    return { error: "Impossible de lire ce fichier Excel." };
+  }
+
+  if (rows2d.length < 2) return { error: "Fichier vide ou format incorrect." };
+
+  // Detect header row
+  const header = rows2d[0].map((h) => String(h).toLowerCase().trim());
+  const iDate    = header.findIndex((h) => h.includes("date"));
+  const iLibelle = header.findIndex((h) => h.includes("libel") || h.includes("description") || h.includes("désignation"));
+  const iMontant = header.findIndex((h) => h.includes("montant") || h.includes("amount"));
+  const iType    = header.findIndex((h) => h === "type");
+
+  if (iDate === -1 || iLibelle === -1 || iMontant === -1) {
+    return { error: "Colonnes manquantes. Le fichier doit avoir : Date, Libellé, Montant." };
+  }
+
+  const existing = await readSheet("Transactions");
+  const existingKeys = new Set(
+    existing.map((r) => `${r["Date"]}|${r["Libellé"]}|${r["Montant"]}`)
+  );
+
+  const rows: ParsedBankRow[] = [];
+
+  for (let i = 1; i < rows2d.length; i++) {
+    const row = rows2d[i];
+    const dateRaw = String(row[iDate] ?? "").trim();
+    const libelle = String(row[iLibelle] ?? "").trim();
+    const montantRaw = String(row[iMontant] ?? "").trim().replace(",", ".");
+    if (!dateRaw || !libelle || !montantRaw) continue;
+
+    // Normalize date to dd/mm/yyyy
+    let date = dateRaw;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const [y, m, d] = date.split("-");
+      date = `${d}/${m}/${y}`;
+    } else if (/^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
+      date = date.replace(/\./g, "/");
+    } else if (/^\d{2}\.\d{2}\.\d{2}$/.test(date)) {
+      const [d, m, y] = date.split(".");
+      date = `${d}/${m}/20${y}`;
+    }
+    // If already dd/mm/yyyy, keep as-is
+
+    const montant = parseFloat(montantRaw) || 0;
+    if (montant === 0) continue;
+
+    const typeHint = iType !== -1 ? String(row[iType] ?? "").trim() : "";
+    const type: "Dépense" | "Revenu" = typeHint === "Revenu" || montant > 0 ? "Revenu" : "Dépense";
+    const finalMontant = type === "Revenu" ? Math.abs(montant) : -Math.abs(montant);
+    const categorie = suggestCategory(libelle);
+    const id = `${date}|${libelle}|${Math.abs(montant)}`;
+
+    rows.push({
+      id, date, libelle, montant: finalMontant, type, categorie,
+      source: "BCJ Manuel", duplicate: existingKeys.has(id), skip: false,
+    });
+  }
+
+  if (rows.length === 0) return { error: "Aucune transaction trouvée dans ce fichier." };
+  return { rows, soldeCalcule: undefined };
+}
+
 // ── BCJ PDF parser ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse") as (b: Buffer) => Promise<{ text: string }>;
