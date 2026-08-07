@@ -291,13 +291,24 @@ export async function parseBCJFile(formData: FormData): Promise<{
 
   let text: string;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Buffer) => Promise<{ text: string }>;
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await pdfParse(buffer);
-    text = result.text;
-  } catch {
-    return { error: "Impossible de lire ce PDF. Vérifiez qu'il s'agit bien d'un relevé BCJ." };
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+    const pages: string[] = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      pages.push(
+        content.items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((item: any) => ("str" in item ? item.str : ""))
+          .join(" ")
+      );
+    }
+    text = pages.join("\n");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: `Erreur lecture PDF : ${msg}` };
   }
 
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);

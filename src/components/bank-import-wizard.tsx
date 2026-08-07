@@ -211,8 +211,8 @@ export function BankImportWizard({
               <span className="text-xs text-slate-400 tabular-nums shrink-0 w-20">{row.date}</span>
 
               {/* Libellé */}
-              <span className="flex-1 truncate text-slate-700 min-w-0">
-                {row.libelle}
+              <span className="flex-1 min-w-0 text-slate-700" title={row.libelle}>
+                <span className="block truncate text-sm">{row.libelle}</span>
                 {isDup && <span className="ml-1.5 text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">doublon</span>}
                 {row.skip && row.skipReason && (
                   <span className="ml-1.5 text-[10px] text-slate-400">({row.skipReason})</span>
