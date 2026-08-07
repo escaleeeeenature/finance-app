@@ -44,3 +44,27 @@ export async function deleteBudgetLine(mois: string, categorie: string) {
   await writeSheet("Budgets", filtered);
   revalidateAll();
 }
+
+export async function createBudgetFromSuggestions(
+  mois: string,
+  lines: { categorie: string; type: string; montant: number }[]
+) {
+  if (!mois || lines.length === 0) return { error: "Données manquantes" };
+
+  const budget = await readSheet("Budgets");
+  const existing = budget.filter((r) => r["Mois"] === mois);
+
+  const toAdd = lines.filter(
+    (l) => !existing.some((e) => e["Catégorie"] === l.categorie && e["Mois"] === mois)
+  );
+
+  const newRows = toAdd.map((l) => ({
+    Mois: mois,
+    "Catégorie": l.categorie,
+    Type: l.type,
+    Montant_Prevu: l.montant.toString(),
+  }));
+
+  await writeSheet("Budgets", [...budget, ...newRows]);
+  revalidateAll();
+}

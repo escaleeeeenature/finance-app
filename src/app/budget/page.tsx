@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddBudgetDialog } from "@/components/budget-forms";
 import { BudgetMonthSelector } from "@/components/budget-month-selector";
 import { BudgetCategoryLine } from "@/components/budget-category-line";
+import { SmartBudgetPrompt } from "@/components/smart-budget-prompt";
 
 function generateMonths(): string[] {
   const now = new Date();
@@ -58,6 +59,64 @@ export default async function BudgetPage({
   const revenus = monthBudget.filter((b) => b["Type"] === "Revenu");
   const depenses = monthBudget.filter((b) => b["Type"] === "Dépense");
 
+  // ── Suggestions budget intelligent ───────────────────────────────────────
+  // Si aucun budget ce mois-ci, calculer la moyenne des 3 derniers mois
+  type Suggestion = { categorie: string; type: "Dépense" | "Revenu"; montant: number; nbMois: number };
+  const suggestions: Suggestion[] = [];
+
+  if (monthBudget.length === 0) {
+    const now = new Date();
+    const last3Months = [1, 2, 3].map((i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      return toMoisStr(d);
+    });
+
+    // Aggregate per category per month
+    const catData: Record<string, { type: string; totals: number[] }> = {};
+
+    for (const moisRef of last3Months) {
+      const moisTrans = transactions.filter((t) => {
+        try {
+          const [d, m, y] = t["Date"].split("/");
+          return toMoisStr(new Date(+y, +m - 1, +d)) === moisRef;
+        } catch { return false; }
+      });
+
+      const seenCats = new Set<string>();
+      for (const t of moisTrans) {
+        const cat = t["Catégorie"];
+        const type = t["Type"]; // "Dépense" | "Revenu"
+        if (!cat || !["Dépense", "Revenu"].includes(type)) continue;
+        if (!catData[cat]) catData[cat] = { type, totals: [] };
+        if (!seenCats.has(cat)) {
+          catData[cat].totals.push(0);
+          seenCats.add(cat);
+        }
+        catData[cat].totals[catData[cat].totals.length - 1] += parseNum(t["Montant"]);
+      }
+    }
+
+    for (const [cat, data] of Object.entries(catData)) {
+      if (data.totals.length === 0) continue;
+      const avg = data.totals.reduce((s, v) => s + v, 0) / data.totals.length;
+      // Round to nearest 10 CHF
+      const rounded = Math.round(avg / 10) * 10;
+      if (rounded <= 0) continue;
+      suggestions.push({
+        categorie: cat,
+        type: data.type as "Dépense" | "Revenu",
+        montant: rounded,
+        nbMois: data.totals.length,
+      });
+    }
+
+    // Sort: revenus first, then dépenses by amount desc
+    suggestions.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "Revenu" ? -1 : 1;
+      return b.montant - a.montant;
+    });
+  }
+
   const totalRevPrevu = revenus.reduce((s, b) => s + parseNum(b["Montant_Prevu"]), 0);
   const totalDepPrevu = depenses.reduce((s, b) => s + parseNum(b["Montant_Prevu"]), 0);
   const totalDepReel = depenses.reduce((s, b) => s + (byCategory[b["Catégorie"]]?.total ?? 0), 0);
@@ -66,6 +125,11 @@ export default async function BudgetPage({
 
   return (
     <div className="p-8 space-y-6">
+      {/* Smart budget prompt — s'affiche automatiquement si aucun budget ce mois */}
+      {suggestions.length > 0 && (
+        <SmartBudgetPrompt mois={currentMonth} suggestions={suggestions} />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Budget</h1>
