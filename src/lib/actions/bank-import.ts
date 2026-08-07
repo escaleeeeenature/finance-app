@@ -162,8 +162,6 @@ export async function parseRevolutFile(formData: FormData): Promise<{
 
 // ── BCJ Excel (manual) parser ─────────────────────────────────────────────────
 // Expected columns: Date (dd/mm/yyyy), Libellé, Montant (neg=dépense), Type (opt)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const XLSX = require("xlsx") as typeof import("xlsx");
 
 export async function parseBCJExcelFile(formData: FormData): Promise<{
   rows?: ParsedBankRow[];
@@ -175,6 +173,7 @@ export async function parseBCJExcelFile(formData: FormData): Promise<{
 
   let rows2d: string[][];
   try {
+    const XLSX = await import("xlsx");
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -243,8 +242,6 @@ export async function parseBCJExcelFile(formData: FormData): Promise<{
 }
 
 // ── BCJ PDF parser ────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (b: Buffer) => Promise<{ text: string }>;
 
 const BCJ_LINE_RE = /^(\d{2}\.\d{2}\.\d{2})\s+(.+)/;
 
@@ -294,6 +291,8 @@ export async function parseBCJFile(formData: FormData): Promise<{
 
   let text: string;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require("pdf-parse") as (b: Buffer) => Promise<{ text: string }>;
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await pdfParse(buffer);
     text = result.text;
