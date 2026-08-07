@@ -57,11 +57,6 @@ export function EditTransactionDialog({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Sync state when tx changes (dialog re-opens with new tx)
-  if (tx && (tx.rowIdx + tx.date + tx.libelle) !== undefined) {
-    // Will be initialized from props above
-  }
-
   function handleOpen(val: boolean) {
     if (!val) { onClose(); setConfirmDelete(false); setError(""); }
   }

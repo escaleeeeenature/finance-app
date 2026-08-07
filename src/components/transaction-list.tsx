@@ -79,6 +79,7 @@ export function TransactionList({
       </div>
 
       <EditTransactionDialog
+        key={selected?.rowIdx ?? -1}
         tx={selected}
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setSelected(null); }}
