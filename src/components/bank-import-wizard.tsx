@@ -212,22 +212,22 @@ export function BankImportWizard({
             </SelectContent>
           </Select>
         </div>
-        {soldeCalcule !== undefined && (
-          <div className="space-y-1">
-            <p className="text-xs text-slate-500 font-medium">
-              Solde final du relevé
-              <span className="text-slate-300 ml-1">(calculé: {fmtCHF(soldeCalcule)} CHF)</span>
-            </p>
-            <Input
-              type="number"
-              step="0.01"
-              value={newBalance}
-              onChange={(e) => setNewBalance(e.target.value)}
-              className="h-8 text-sm"
-              placeholder="Solde à mettre à jour"
-            />
-          </div>
-        )}
+        <div className="space-y-1">
+          <p className="text-xs text-slate-500 font-medium">
+            Solde final du compte
+            {soldeCalcule !== undefined && (
+              <span className="text-slate-300 ml-1">(relevé: {fmtCHF(soldeCalcule)} CHF)</span>
+            )}
+          </p>
+          <Input
+            type="number"
+            step="0.01"
+            value={newBalance}
+            onChange={(e) => setNewBalance(e.target.value)}
+            className="h-8 text-sm"
+            placeholder="Ex: 4'250.00"
+          />
+        </div>
       </div>
 
       {/* Internal transfers section */}
