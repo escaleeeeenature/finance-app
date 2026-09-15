@@ -291,21 +291,17 @@ export async function parseBCJFile(formData: FormData): Promise<{
 
   let text: string;
   try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const PDFParser = require("pdf2json");
     const buffer = Buffer.from(await file.arrayBuffer());
-    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-    const pages: string[] = [];
-    for (let p = 1; p <= doc.numPages; p++) {
-      const page = await doc.getPage(p);
-      const content = await page.getTextContent();
-      pages.push(
-        content.items
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((item: any) => ("str" in item ? item.str : ""))
-          .join(" ")
-      );
-    }
-    text = pages.join("\n");
+    text = await new Promise<string>((resolve, reject) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parser = new PDFParser(null, 1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parser.on("pdfParser_dataError", (e: any) => reject(e.parserError));
+      parser.on("pdfParser_dataReady", () => resolve(parser.getRawTextContent()));
+      parser.parseBuffer(buffer);
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { error: `Erreur lecture PDF : ${msg}` };
