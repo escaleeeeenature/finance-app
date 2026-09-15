@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, CheckCircle, AlertTriangle, X, Eye, EyeOff, Building2 } from "lucide-react";
-import { parseRevolutFile, parseBCJFile, parseBCJExcelFile, confirmBankImport, type ParsedBankRow } from "@/lib/actions/bank-import";
+import { Upload, CheckCircle, X, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { parseRevolutFile, parseBCJFile, parseBCJExcelFile, confirmBankImport, type ParsedBankRow, type DetectedTransfer } from "@/lib/actions/bank-import";
 
 const CATEGORIES = [
   "Alimentation", "Transport", "Restaurants & Bars", "Hébergement", "Voyage",
@@ -28,8 +28,10 @@ export function BankImportWizard({
 }) {
   const [step, setStep] = useState<"upload" | "review" | "done">("upload");
   const [rows, setRows] = useState<ParsedBankRow[]>([]);
-  const [skipped, setSkipped] = useState<Set<string>>(new Set()); // IDs manually skipped
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<Record<string, string>>({});
+  // transfer from/to selections keyed by row.id
+  const [transferSelections, setTransferSelections] = useState<Record<string, { from: string; to: string }>>({});
   const [soldeCalcule, setSoldeCalcule] = useState<number | undefined>();
   const [newBalance, setNewBalance] = useState<string>("");
   const [account, setAccount] = useState(defaultAccount ?? accounts[0]?.nom ?? (bank === "revolut" ? "Revolut" : "BCJ"));
@@ -38,6 +40,7 @@ export function BankImportWizard({
   const [isParsing, startParse] = useTransition();
   const [isConfirming, startConfirm] = useTransition();
   const [importedCount, setImportedCount] = useState(0);
+  const [transfersRecorded, setTransfersRecorded] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFile(file: File) {
@@ -52,11 +55,25 @@ export function BankImportWizard({
         : isXLSX && bank === "bcj" ? await parseBCJExcelFile(fd)
         : await parseRevolutFile(fd);
       if (res.error) { setError(res.error); return; }
-      setRows(res.rows ?? []);
+      const fetchedRows = res.rows ?? [];
+      setRows(fetchedRows);
       setSoldeCalcule(res.soldeCalcule);
       if (res.soldeCalcule !== undefined) setNewBalance(res.soldeCalcule.toString());
-      setCategories(
-        Object.fromEntries((res.rows ?? []).map((r) => [r.id, r.categorie]))
+      setCategories(Object.fromEntries(fetchedRows.map((r) => [r.id, r.categorie])));
+      // Pre-fill transfer selections: current account is always one side
+      const currentAcc = defaultAccount ?? accounts[0]?.nom ?? "";
+      setTransferSelections(
+        Object.fromEntries(
+          fetchedRows
+            .filter((r) => r.isTransfer)
+            .map((r) => [
+              r.id,
+              {
+                from: r.montant < 0 ? currentAcc : (r.transferTo === currentAcc ? "" : (r.transferTo ?? "")),
+                to: r.montant > 0 ? currentAcc : (r.transferTo ?? ""),
+              },
+            ])
+        )
       );
       setStep("review");
     });
@@ -68,13 +85,32 @@ export function BankImportWizard({
       categorie: categories[r.id] ?? r.categorie,
       skip: r.skip || skipped.has(r.id),
     }));
+
+    // Build confirmed transfers from rows marked as transfer
+    const confirmedTransfers: DetectedTransfer[] = rows
+      .filter((r) => r.isTransfer)
+      .map((r) => {
+        const sel = transferSelections[r.id] ?? { from: "", to: "" };
+        return {
+          id: r.id,
+          date: r.date,
+          montant: Math.abs(r.montant),
+          libelle: r.libelle,
+          from: sel.from,
+          to: sel.to,
+        };
+      })
+      .filter((t) => t.from && t.to && t.from !== t.to);
+
     startConfirm(async () => {
       const res = await confirmBankImport(
         toSend,
         account,
-        newBalance ? parseFloat(newBalance) : undefined
+        newBalance ? parseFloat(newBalance) : undefined,
+        confirmedTransfers.length > 0 ? confirmedTransfers : undefined
       );
       setImportedCount(res.imported);
+      setTransfersRecorded(res.transfersRecorded);
       setStep("done");
     });
   }
@@ -122,6 +158,9 @@ export function BankImportWizard({
       <div className="text-center py-8 space-y-2">
         <CheckCircle size={40} className="mx-auto text-emerald-500" />
         <p className="text-lg font-semibold text-slate-800">{importedCount} transactions importées</p>
+        {transfersRecorded > 0 && (
+          <p className="text-xs text-amber-600">{transfersRecorded} virement{transfersRecorded > 1 ? "s" : ""} interne{transfersRecorded > 1 ? "s" : ""} enregistré{transfersRecorded > 1 ? "s" : ""}</p>
+        )}
         <p className="text-xs text-slate-400">Solde du compte {account} mis à jour</p>
         <Button variant="outline" size="sm" className="mt-4" onClick={() => { setStep("upload"); setRows([]); }}>
           Importer un autre fichier
@@ -190,6 +229,74 @@ export function BankImportWizard({
           </div>
         )}
       </div>
+
+      {/* Internal transfers section */}
+      {rows.some((r) => r.isTransfer) && (() => {
+        const allAccounts = [...accounts.map((a) => a.nom), "Revolut"].filter(
+          (v, i, arr) => arr.indexOf(v) === i
+        );
+        const transferRows = rows.filter((r) => r.isTransfer);
+        return (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+            <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+              <ArrowRight size={13} className="text-amber-500" />
+              {transferRows.length} virement{transferRows.length > 1 ? "s" : ""} interne{transferRows.length > 1 ? "s" : ""} détecté{transferRows.length > 1 ? "s" : ""}
+            </p>
+            <p className="text-[11px] text-amber-600">
+              Ces transactions seront ignorées de ton relevé. Choisis les comptes pour enregistrer le transfert.
+            </p>
+            {transferRows.map((r) => {
+              const sel = transferSelections[r.id] ?? { from: "", to: "" };
+              return (
+                <div key={r.id} className="bg-white rounded-lg border border-amber-100 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 tabular-nums">{r.date}</span>
+                    <span className="font-medium text-slate-700 flex-1 mx-3 truncate">{r.libelle}</span>
+                    <span className="font-semibold text-slate-700 tabular-nums shrink-0">
+                      {fmtCHF(r.montant)} CHF
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-medium">De</p>
+                      <Select
+                        value={sel.from}
+                        onValueChange={(v) => v && setTransferSelections((s) => ({
+                          ...s, [r.id]: { ...s[r.id], from: v }
+                        }))}
+                      >
+                        <SelectTrigger className="h-7 text-xs">
+                          <SelectValue placeholder="Compte..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allAccounts.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <ArrowRight size={14} className="text-slate-300 mt-4 shrink-0" />
+                    <div className="flex-1 space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-medium">Vers</p>
+                      <Select
+                        value={sel.to}
+                        onValueChange={(v) => v && setTransferSelections((s) => ({
+                          ...s, [r.id]: { ...s[r.id], to: v }
+                        }))}
+                      >
+                        <SelectTrigger className="h-7 text-xs">
+                          <SelectValue placeholder="Compte..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allAccounts.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Transaction list */}
       <div className="space-y-1.5 max-h-[50vh] overflow-y-auto pr-1">

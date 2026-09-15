@@ -14,6 +14,18 @@ export type ParsedBankRow = {
   duplicate: boolean;
   skip: boolean;          // internal transfers etc.
   skipReason?: string;
+  isTransfer?: boolean;   // detected internal transfer between own accounts
+  transferTo?: string;    // suggested destination account
+};
+
+export type DetectedTransfer = {
+  id: string;
+  date: string;
+  montant: number;        // always positive
+  libelle: string;
+  from: string;           // to be confirmed by user
+  to: string;             // to be confirmed by user
+  toSuggestion?: string;  // pre-filled suggestion
 };
 
 // ── Auto-categorization ──────────────────────────────────────────────────────
@@ -389,15 +401,31 @@ export async function parseBCJFile(formData: FormData): Promise<{
     const categorie = suggestCategory(libelle);
     const id = `${date}|${libelle}|${amount}`;
 
-    // Skip internal transfers to Revolut (balance already handled via soldeCalcule)
+    const blockText = block.join(" ");
+
+    // Internal transfer to Revolut (debit with "revolut" in text)
     const isRevolutTransfer = direction === "debit" &&
       (libelle.toLowerCase().includes("revolut") || firstLine.toLowerCase().includes("revolut"));
+
+    // Internal BCJ transfer: credit with account number pattern XX XX XXX.XXX-XX
+    const isBCJInternalCredit = direction === "credit" &&
+      /\d{2}\s\d{2}\s\d{3}\.\d{3}-\d{2}/.test(blockText);
+
+    // Internal BCJ transfer: debit "Virement à" with account number pattern
+    const isBCJInternalDebit = direction === "debit" &&
+      blockText.toLowerCase().includes("virement") &&
+      /\d{2}\s\d{2}\s\d{3}\.\d{3}-\d{2}/.test(blockText);
+
+    const isTransfer = isRevolutTransfer || isBCJInternalCredit || isBCJInternalDebit;
+    const transferTo = isRevolutTransfer ? "Revolut" : undefined;
 
     rows.push({
       id, date, libelle, montant, type, categorie,
       source: "BCJ", duplicate: existingKeys.has(id),
-      skip: isRevolutTransfer,
-      skipReason: isRevolutTransfer ? "Virement interne vers Revolut" : undefined,
+      skip: isTransfer,
+      skipReason: isTransfer ? "Virement interne détecté" : undefined,
+      isTransfer,
+      transferTo,
     });
   }
 
@@ -409,11 +437,12 @@ export async function parseBCJFile(formData: FormData): Promise<{
 export async function confirmBankImport(
   rows: Pick<ParsedBankRow, "date" | "libelle" | "montant" | "type" | "categorie" | "skip" | "duplicate">[],
   accountName: string,
-  newBalance?: number
+  newBalance?: number,
+  transfers?: DetectedTransfer[]
 ) {
   const toImport = rows.filter((r) => !r.skip && !r.duplicate);
 
-  // Append transactions
+  // Append regular transactions
   await Promise.all(
     toImport.map((r) =>
       appendRow("Transactions", {
@@ -427,6 +456,42 @@ export async function confirmBankImport(
       })
     )
   );
+
+  // Record confirmed internal transfers (dedup: skip if same date+amount already a Transfert)
+  if (transfers && transfers.length > 0) {
+    const existing = await readSheet("Transactions");
+    const existingTransferKeys = new Set(
+      existing
+        .filter((r) => r["Type"] === "Transfert")
+        .map((r) => `${r["Date"]}|${r["Montant"]}`)
+    );
+
+    for (const t of transfers) {
+      if (!t.from || !t.to || t.from === t.to) continue;
+      const key = `${t.date}|${t.montant.toFixed(2)}`;
+      if (existingTransferKeys.has(key)) continue; // already recorded from the other side
+
+      await appendRow("Transactions", {
+        Date: t.date,
+        "Libellé": `Virement → ${t.to}`,
+        Montant: t.montant.toString(),
+        "Catégorie": "Transfert",
+        Compte_Source: t.from,
+        Statut: "Validé",
+        Type: "Transfert",
+      });
+      await appendRow("Transactions", {
+        Date: t.date,
+        "Libellé": `Virement ← ${t.from}`,
+        Montant: t.montant.toString(),
+        "Catégorie": "Transfert",
+        Compte_Source: t.to,
+        Statut: "Validé",
+        Type: "Transfert",
+      });
+      existingTransferKeys.add(key); // prevent double write within same batch
+    }
+  }
 
   // Update account balance if provided
   if (newBalance !== undefined && accountName) {
@@ -443,5 +508,5 @@ export async function confirmBankImport(
   revalidatePath("/accounts");
   revalidatePath("/budget");
 
-  return { imported: toImport.length };
+  return { imported: toImport.length, transfersRecorded: transfers?.length ?? 0 };
 }
