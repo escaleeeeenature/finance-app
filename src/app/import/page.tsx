@@ -29,7 +29,7 @@ export default async function ImportPage() {
         <div className="flex items-center gap-2 mb-4">
           <Building2 size={20} className="text-sky-500" />
           <h1 className="text-xl font-bold text-slate-900">Import relevés bancaires</h1>
-          <span className="text-xs text-slate-400 ml-1">Revolut CSV · BCJ PDF</span>
+          <span className="text-xs text-slate-400 ml-1">Revolut CSV · BCJ CAMT.053</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="border-0 shadow-sm">
@@ -47,11 +47,15 @@ export default async function ImportPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-slate-700">BCJ</CardTitle>
               <p className="text-xs text-slate-400">
-                E-banking BCJ → Compte courant → Télécharger l&apos;extrait → PDF
+                E-banking BCJ → Compte courant → Télécharger l&apos;extrait → CAMT.053 XML
               </p>
             </CardHeader>
             <CardContent>
-              <BankImportWizard accounts={activeAccounts} bank="bcj" />
+              <BankImportWizard
+                accounts={activeAccounts}
+                bank="bcj"
+                defaultAccount={activeAccounts.find((a) => a.nom.toLowerCase().includes("bcj"))?.nom}
+              />
             </CardContent>
           </Card>
         </div>

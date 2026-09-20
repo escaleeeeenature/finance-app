@@ -186,7 +186,8 @@ export async function parseBCJCamtFile(formData: FormData): Promise<{
     const id = ref || `${date}|${libelle}|${amount}`;
 
     // Transfer detection
-    const isBCJInternalDebit = ind === "DBIT" && cdtrBic === "BCJUCH22XXX";
+    // "BCJ Mobile Banking Maël Caillet" = virement interne BCJ; TWINT a aussi BIC BCJ mais commence par "Débit TWINT"
+    const isBCJInternalDebit = ind === "DBIT" && cdtrBic === "BCJUCH22XXX" && /BCJ Mobile Banking/i.test(addlNtry);
     const isBCJInternalCredit = ind === "CRDT" && /Cr[eé]dit \d{2} \d{2}/.test(addlNtry);
     const isRevolutCard = addlNtry.toLowerCase().includes("revolut");
     // Ordre permanent à soi-même = virement vers Raiffeisen (compte non importé)
