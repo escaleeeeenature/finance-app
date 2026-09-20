@@ -43,6 +43,7 @@ const CATEGORY_RULES: { keywords: string[]; cat: string }[] = [
   { keywords: ["uniqlo", "zara", "h&m", "zalando", "vêtement", "clothing", "shoes", "era 48"], cat: "Vêtements" },
   { keywords: ["salaire", "salary", "lohn", "virement de :"], cat: "Salaire" },
   { keywords: ["assurance", "insurance", "css", "helsana", "swica", "visana"], cat: "Assurances" },
+  { keywords: ["raiffeisen", "investissement", "pilier 3", "3ème pilier", "troisième pilier", "viac", "finpension"], cat: "Investissement" },
   { keywords: ["electricity", "gas", "eau ", "energie", "swissgas", "romande energie"], cat: "Charges" },
 ];
 
@@ -52,6 +53,160 @@ function suggestCategory(libelle: string): string {
     if (rule.keywords.some((kw) => l.includes(kw))) return rule.cat;
   }
   return "Autre";
+}
+
+// ── BCJ CAMT.053 parser ──────────────────────────────────────────────────────
+
+function getAmt(f: unknown): number {
+  if (typeof f === "number") return f;
+  if (typeof f === "string") return parseFloat(f) || 0;
+  if (f && typeof f === "object") {
+    const o = f as Record<string, unknown>;
+    return parseFloat(String(o["#text"] ?? 0)) || 0;
+  }
+  return 0;
+}
+
+function cleanCamtLibelle(raw: string, cdtrNm: string): string {
+  let s = (raw ?? "").trim();
+
+  // Card payment: "Paiement DD.MM.YYYY HH:MM <merchant> Numéro de carte: ..."
+  s = s.replace(/^(?:Paiement|DMC-Tancomat)\s+\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s*/i, "");
+  // Strip card number suffix
+  s = s.replace(/\s*Num[eé]ro de carte:\s*[\d*]+/i, "");
+  // Strip foreign currency note "Montant: USD 54.42"
+  s = s.replace(/\s*Montant:\s*[A-Z]{3}\s*[\d.]+/i, "");
+  // TWINT
+  s = s.replace(/^D[eé]bit TWINT\s*/i, "TWINT → ");
+  s = s.replace(/^Cr[eé]dit TWINT\s*/i, "TWINT de ");
+  // Strip TWINT 19-digit ref at end
+  s = s.replace(/\s+\d{19,}$/, "");
+  // Strip phone number
+  s = s.replace(/,?\s*\+41\d{9}/g, "");
+  // BCJ Mobile Banking to external party → use creditor name
+  if (/^BCJ Mobile Banking$/i.test(s.trim()) && cdtrNm && cdtrNm !== "NOTPROVIDED") {
+    return cdtrNm.trim();
+  }
+  // BCJ internal transfer
+  if (/^BCJ Mobile Banking/i.test(s.trim())) return "Virement BCJ interne";
+  // BCJ internal credit "Crédit 10 00 044.583-00"
+  if (/^Cr[eé]dit \d{2} \d{2}/i.test(s.trim())) return "Virement entrant BCJ";
+  // Just "Crédit" = salary/credit with no description
+  if (/^Cr[eé]dit$/i.test(s.trim())) return "Crédit entrant";
+
+  return s.trim() || "—";
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getTxDtls(ntryDtls: any): any {
+  if (!ntryDtls) return {};
+  const tx = ntryDtls.TxDtls;
+  return Array.isArray(tx) ? tx[0] : (tx ?? {});
+}
+
+export async function parseBCJCamtFile(formData: FormData): Promise<{
+  rows?: ParsedBankRow[];
+  soldeCalcule?: number;
+  error?: string;
+}> {
+  const file = formData.get("file") as File | null;
+  if (!file) return { error: "Fichier manquant" };
+
+  let xmlText: string;
+  try {
+    xmlText = await file.text();
+  } catch {
+    return { error: "Impossible de lire le fichier." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let doc: any;
+  try {
+    const { XMLParser } = await import("fast-xml-parser");
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: "@_",
+      parseTagValue: true,
+      isArray: (name) => ["Ntry", "Bal", "TxDtls"].includes(name),
+    });
+    doc = parser.parse(xmlText);
+  } catch {
+    return { error: "Fichier XML invalide." };
+  }
+
+  const stmt = doc?.Document?.BkToCstmrStmt?.Stmt;
+  if (!stmt) return { error: "Format CAMT non reconnu (structure inattendue)." };
+
+  // Closing balance (CLBD)
+  let soldeCalcule: number | undefined;
+  const balances: unknown[] = Array.isArray(stmt.Bal) ? stmt.Bal : stmt.Bal ? [stmt.Bal] : [];
+  for (const bal of balances) {
+    const b = bal as Record<string, unknown>;
+    const cd = (b?.Tp as Record<string, unknown>)?.CdOrPrtry as Record<string, unknown>;
+    if (cd?.Cd === "CLBD") {
+      const amt = getAmt(b.Amt);
+      const ind = String(b.CdtDbtInd ?? "CRDT");
+      soldeCalcule = ind === "DBIT" ? -amt : amt;
+    }
+  }
+
+  const existing = await readSheet("Transactions");
+  const existingKeys = new Set(
+    existing.map((r) => `${r["Date"]}|${r["Libellé"]}|${r["Montant"]}`)
+  );
+
+  const entries: unknown[] = Array.isArray(stmt.Ntry) ? stmt.Ntry : stmt.Ntry ? [stmt.Ntry] : [];
+  const rows: ParsedBankRow[] = [];
+
+  for (const entry of entries) {
+    const e = entry as Record<string, unknown>;
+    const amount = getAmt(e.Amt);
+    if (amount === 0) continue;
+
+    const ind = String(e.CdtDbtInd ?? "DBIT");
+    const dateRaw = String((e.BookgDt as Record<string, unknown>)?.Dt ?? "");
+    const [yr, mo, dy] = dateRaw.split("-");
+    const date = yr && mo && dy ? `${dy}/${mo}/${yr}` : dateRaw;
+
+    const addlNtry = String(e.AddtlNtryInf ?? "");
+    const txDtls = getTxDtls(e.NtryDtls);
+    const cdtrBic = String(
+      (txDtls?.RltdAgts?.CdtrAgt?.FinInstnId?.BICFI) ?? ""
+    );
+    const cdtrNm = String(
+      (txDtls?.RltdPties?.Cdtr?.Nm) ?? ""
+    );
+
+    const libelle = cleanCamtLibelle(addlNtry, cdtrNm);
+    const montant = ind === "DBIT" ? -amount : amount;
+    const type: "Dépense" | "Revenu" = ind === "DBIT" ? "Dépense" : "Revenu";
+
+    // Unique id: bank reference preferred
+    const ref = String(e.AcctSvcrRef ?? "");
+    const id = ref || `${date}|${libelle}|${amount}`;
+
+    // Transfer detection
+    const isBCJInternalDebit = ind === "DBIT" && cdtrBic === "BCJUCH22XXX";
+    const isBCJInternalCredit = ind === "CRDT" && /Cr[eé]dit \d{2} \d{2}/.test(addlNtry);
+    const isRevolutCard = addlNtry.toLowerCase().includes("revolut");
+    const isTransfer = isBCJInternalDebit || isBCJInternalCredit || isRevolutCard;
+
+    const categorie = suggestCategory(libelle);
+    const dupKey = `${date}|${libelle}|${String(amount)}`;
+
+    rows.push({
+      id, date, libelle, montant, type, categorie,
+      source: "BCJ",
+      duplicate: existingKeys.has(dupKey),
+      skip: isTransfer,
+      skipReason: isTransfer ? "Virement interne détecté" : undefined,
+      isTransfer,
+      transferTo: isRevolutCard ? "Revolut" : undefined,
+    });
+  }
+
+  if (rows.length === 0) return { error: "Aucune transaction trouvée dans ce fichier CAMT." };
+  return { rows, soldeCalcule };
 }
 
 // ── Revolut CSV parser ────────────────────────────────────────────────────────
