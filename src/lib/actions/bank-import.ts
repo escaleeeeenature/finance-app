@@ -189,7 +189,9 @@ export async function parseBCJCamtFile(formData: FormData): Promise<{
     const isBCJInternalDebit = ind === "DBIT" && cdtrBic === "BCJUCH22XXX";
     const isBCJInternalCredit = ind === "CRDT" && /Cr[eé]dit \d{2} \d{2}/.test(addlNtry);
     const isRevolutCard = addlNtry.toLowerCase().includes("revolut");
-    const isTransfer = isBCJInternalDebit || isBCJInternalCredit || isRevolutCard;
+    // Ordre permanent à soi-même = virement vers Raiffeisen (compte non importé)
+    const isOrdrePermRaiffeisen = ind === "DBIT" && /^Ordre permanent/i.test(addlNtry.trim());
+    const isTransfer = isBCJInternalDebit || isBCJInternalCredit || isRevolutCard || isOrdrePermRaiffeisen;
 
     const categorie = suggestCategory(libelle);
     const dupKey = `${date}|${libelle}|${String(amount)}`;
@@ -201,7 +203,7 @@ export async function parseBCJCamtFile(formData: FormData): Promise<{
       skip: isTransfer,
       skipReason: isTransfer ? "Virement interne détecté" : undefined,
       isTransfer,
-      transferTo: isRevolutCard ? "Revolut" : undefined,
+      transferTo: isRevolutCard ? "Revolut" : isOrdrePermRaiffeisen ? "Raiffeisen" : undefined,
     });
   }
 
@@ -658,11 +660,44 @@ export async function confirmBankImport(
         Statut: "Validé",
         Type: "Transfert",
       });
-      existingTransferKeys.add(key); // prevent double write within same batch
+      existingTransferKeys.add(key);
+
+      // Cas spécial BCJ → Raiffeisen :
+      // Enregistrer aussi une Dépense Investissement pour le budget
+      // + créditer le solde Raiffeisen automatiquement
+      const isRaiffeisenTransfer = t.to.toLowerCase().includes("raiffeisen");
+      if (isRaiffeisenTransfer) {
+        await appendRow("Transactions", {
+          Date: t.date,
+          "Libellé": `Ordre permanent → ${t.to}`,
+          Montant: t.montant.toString(),
+          "Catégorie": "Investissement",
+          Compte_Source: t.from,
+          Statut: "Validé",
+          Type: "Dépense",
+        });
+      }
+    }
+
+    // Mettre à jour le solde du compte Raiffeisen pour les transferts vers lui
+    const raiffeisenTransfers = transfers.filter(
+      (t) => t.from && t.to && t.from !== t.to && t.to.toLowerCase().includes("raiffeisen")
+    );
+    if (raiffeisenTransfers.length > 0) {
+      const allAccounts = await readSheet("Comptes");
+      const raifIdx = allAccounts.findIndex(
+        (a) => (a["Banque"] ?? a["Nom"] ?? "").toLowerCase().includes("raiffeisen")
+      );
+      if (raifIdx !== -1) {
+        const current = parseFloat(allAccounts[raifIdx]["Solde_Initial"] ?? "0") || 0;
+        const added = raiffeisenTransfers.reduce((sum, t) => sum + t.montant, 0);
+        allAccounts[raifIdx]["Solde_Initial"] = (current + added).toFixed(2);
+        await writeSheet("Comptes", allAccounts);
+      }
     }
   }
 
-  // Update account balance if provided
+  // Update imported account balance if provided
   if (newBalance !== undefined && accountName) {
     const accounts = await readSheet("Comptes");
     const idx = accounts.findIndex((a) => a["Banque"] === accountName || a["Nom"] === accountName);
