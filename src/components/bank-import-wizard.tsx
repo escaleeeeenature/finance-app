@@ -43,6 +43,22 @@ export function BankImportWizard({
   const [transfersRecorded, setTransfersRecorded] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  function buildTransferSelections(sourceRows: ParsedBankRow[], currentAcc: string) {
+    setTransferSelections(
+      Object.fromEntries(
+        sourceRows
+          .filter((r) => r.isTransfer)
+          .map((r) => [
+            r.id,
+            {
+              from: r.montant < 0 ? currentAcc : (r.transferTo ?? ""),
+              to:   r.montant > 0 ? currentAcc : (r.transferTo ?? ""),
+            },
+          ])
+      )
+    );
+  }
+
   function handleFile(file: File) {
     setError("");
     const fd = new FormData();
@@ -62,21 +78,8 @@ export function BankImportWizard({
       setSoldeCalcule(res.soldeCalcule);
       if (res.soldeCalcule !== undefined) setNewBalance(res.soldeCalcule.toString());
       setCategories(Object.fromEntries(fetchedRows.map((r) => [r.id, r.categorie])));
-      // Pre-fill transfer selections: current account is always one side
-      const currentAcc = defaultAccount ?? accounts[0]?.nom ?? "";
-      setTransferSelections(
-        Object.fromEntries(
-          fetchedRows
-            .filter((r) => r.isTransfer)
-            .map((r) => [
-              r.id,
-              {
-                from: r.montant < 0 ? currentAcc : (r.transferTo === currentAcc ? "" : (r.transferTo ?? "")),
-                to: r.montant > 0 ? currentAcc : (r.transferTo ?? ""),
-              },
-            ])
-        )
-      );
+      // Pre-fill transfer selections using the currently selected account
+      buildTransferSelections(fetchedRows, account);
       setStep("review");
     });
   }
@@ -202,7 +205,7 @@ export function BankImportWizard({
       <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-xl">
         <div className="space-y-1">
           <p className="text-xs text-slate-500 font-medium">Compte à créditer</p>
-          <Select value={account} onValueChange={(v) => v && setAccount(v)}>
+          <Select value={account} onValueChange={(v) => { if (!v) return; setAccount(v); buildTransferSelections(rows, v); }}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -251,9 +254,14 @@ export function BankImportWizard({
               const sel = transferSelections[r.id] ?? { from: "", to: "" };
               return (
                 <div key={r.id} className="bg-white rounded-lg border border-amber-100 p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 tabular-nums">{r.date}</span>
-                    <span className="font-medium text-slate-700 flex-1 mx-3 truncate">{r.libelle}</span>
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <span className="text-slate-500 tabular-nums shrink-0">{r.date}</span>
+                    <span className="font-medium text-slate-700 flex-1 truncate">{r.libelle}</span>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${
+                      r.montant < 0 ? "bg-red-50 text-red-500" : "bg-emerald-50 text-emerald-600"
+                    }`}>
+                      {r.montant < 0 ? "↑ DÉBIT" : "↓ CRÉDIT"}
+                    </span>
                     <span className="font-semibold text-slate-700 tabular-nums shrink-0">
                       {fmtCHF(r.montant)} CHF
                     </span>
