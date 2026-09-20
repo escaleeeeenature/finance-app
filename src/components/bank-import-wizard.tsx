@@ -125,6 +125,10 @@ export function BankImportWizard({
   const dupRows = rows.filter((r) => !r.skip && r.duplicate);
   const skippedRows = rows.filter((r) => r.skip);
   const manuallySkipped = rows.filter((r) => !r.skip && skipped.has(r.id));
+  const validTransferCount = rows.filter((r) => {
+    const sel = transferSelections[r.id];
+    return r.isTransfer && sel?.from && sel?.to && sel.from !== sel.to;
+  }).length;
 
   // ── Upload ──────────────────────────────────────────────────────────────────
   if (step === "upload") {
@@ -385,9 +389,15 @@ export function BankImportWizard({
         <Button
           className="flex-1 bg-indigo-600 hover:bg-indigo-700"
           onClick={handleConfirm}
-          disabled={isConfirming || activeRows.length === 0}
+          disabled={isConfirming || (activeRows.length === 0 && validTransferCount === 0)}
         >
-          {isConfirming ? "Import en cours..." : `Importer ${activeRows.length} transactions`}
+          {isConfirming ? "Import en cours..." : (
+            activeRows.length > 0 && validTransferCount > 0
+              ? `Importer ${activeRows.length} transactions + ${validTransferCount} virements`
+              : activeRows.length > 0
+              ? `Importer ${activeRows.length} transactions`
+              : `Enregistrer ${validTransferCount} virement${validTransferCount > 1 ? "s" : ""}`
+          )}
         </Button>
       </div>
     </div>
