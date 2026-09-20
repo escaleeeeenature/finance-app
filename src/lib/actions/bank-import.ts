@@ -43,7 +43,7 @@ const CATEGORY_RULES: { keywords: string[]; cat: string }[] = [
   { keywords: ["uniqlo", "zara", "h&m", "zalando", "vêtement", "clothing", "shoes", "era 48"], cat: "Vêtements" },
   { keywords: ["salaire", "salary", "lohn", "virement de :"], cat: "Salaire" },
   { keywords: ["assurance", "insurance", "css", "helsana", "swica", "visana"], cat: "Assurances" },
-  { keywords: ["raiffeisen", "investissement", "pilier 3", "3ème pilier", "troisième pilier", "viac", "finpension"], cat: "Investissement" },
+  { keywords: ["raiffeisen", "investissement", "pilier 3", "3ème pilier", "troisième pilier", "viac", "finpension", "ordre permanent"], cat: "Investissement" },
   { keywords: ["electricity", "gas", "eau ", "energie", "swissgas", "romande energie"], cat: "Charges" },
 ];
 
@@ -308,6 +308,20 @@ export async function parseRevolutFile(formData: FormData): Promise<{
       rows.push({
         id, date, libelle, montant, type: "Dépense", categorie: cat,
         source: "Revolut", duplicate: existingKeys.has(id), skip: false,
+      });
+      continue;
+    }
+
+    // "Transfert" négatif CHF = virement bancaire sortant (ex: Revolut → BCJ)
+    // → virement interne à confirmer, ne pas comptabiliser en dépense
+    if (type === "Transfert" && montant < 0) {
+      rows.push({
+        id, date, libelle, montant, type: "Dépense", categorie: "Transfert",
+        source: "Revolut", duplicate: existingKeys.has(id),
+        skip: true,
+        skipReason: "Virement bancaire sortant (virement interne)",
+        isTransfer: true,
+        transferTo: undefined, // user selects destination (BCJ Courant or Épargne)
       });
       continue;
     }
