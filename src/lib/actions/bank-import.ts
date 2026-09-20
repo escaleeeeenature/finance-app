@@ -1,5 +1,5 @@
 "use server";
-import { readSheet, appendRow, writeSheet } from "@/lib/sheets";
+import { readSheet, appendRow, appendRows, writeSheet } from "@/lib/sheets";
 import { parseNum } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 
@@ -614,20 +614,16 @@ export async function confirmBankImport(
 ) {
   const toImport = rows.filter((r) => !r.skip && !r.duplicate);
 
-  // Append regular transactions
-  await Promise.all(
-    toImport.map((r) =>
-      appendRow("Transactions", {
-        Date: r.date,
-        "Libellé": r.libelle,
-        Montant: Math.abs(r.montant).toString(),
-        "Catégorie": r.categorie,
-        Compte_Source: accountName,
-        Statut: "Validé",
-        Type: r.type,
-      })
-    )
-  );
+  // Append all regular transactions in a single API call
+  await appendRows("Transactions", toImport.map((r) => ({
+    Date: r.date,
+    "Libellé": r.libelle,
+    Montant: Math.abs(r.montant).toString(),
+    "Catégorie": r.categorie,
+    Compte_Source: accountName,
+    Statut: "Validé",
+    Type: r.type,
+  })));
 
   // Record confirmed internal transfers (dedup: skip if same date+amount already a Transfert)
   if (transfers && transfers.length > 0) {

@@ -54,23 +54,27 @@ export async function writeSheet(sheetName: string, data: Record<string, string>
 }
 
 export async function appendRow(sheetName: string, row: Record<string, string>) {
+  return appendRows(sheetName, [row]);
+}
+
+export async function appendRows(sheetName: string, rows: Record<string, string>[]) {
+  if (rows.length === 0) return;
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Read headers first to guarantee values land in the correct columns,
-  // regardless of the key insertion order of the caller's object.
+  // Read headers once, then insert all rows in a single API call
   const headerRes = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!1:1`,
   });
-  const headers = (headerRes.data.values?.[0] as string[] | undefined) ?? Object.keys(row);
-  const values = headers.map((h) => row[h] ?? "");
+  const headers = (headerRes.data.values?.[0] as string[] | undefined) ?? Object.keys(rows[0]);
+  const values = rows.map((row) => headers.map((h) => row[h] ?? ""));
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!A1`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [values] },
+    requestBody: { values },
   });
 }
