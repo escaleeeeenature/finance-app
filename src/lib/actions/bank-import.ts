@@ -32,7 +32,7 @@ export type DetectedTransfer = {
 const CATEGORY_RULES: { keywords: string[]; cat: string }[] = [
   { keywords: ["migros", "coop", "denner", "lidl", "aldi", "volg", "spar", "manor food", "k-kiosk", "relay"], cat: "Alimentation" },
   { keywords: ["sbb", "cff", "ffs", "tpg", "bus ", "tram", "metro", "grab", "taxi", "uber", "bls", "fairtiq"], cat: "Transport" },
-  { keywords: ["restaurant", "café", "bar", "bistro", "brasserie", "pizza", "sushi", "burger", "kebab", "hay bar", "high bar", "mad monkey", "quiri"], cat: "Restaurants & Bars" },
+  { keywords: ["restaurant", "café", "bar", "bistro", "brasserie", "pizza", "sushi", "burger", "kebab", "hay bar", "high bar", "mad monkey", "quiri", "buvette", "cantine", "pépin", "pepin"], cat: "Restaurants & Bars" },
   { keywords: ["hotel", "hostel", "airbnb", "booking.com", "hébergement", "b&b"], cat: "Hébergement" },
   { keywords: ["netflix", "spotify", "apple", "google play", "amazon", "disney+", "youtube premium"], cat: "Abonnements" },
   { keywords: ["pharmacie", "apotheke", "médecin", "dentiste", "hôpital", "doctor", "clinic", "health"], cat: "Santé" },
@@ -315,9 +315,9 @@ export async function parseRevolutFile(formData: FormData): Promise<{
       continue;
     }
 
-    // "Transfert" négatif CHF = virement bancaire sortant (ex: Revolut → BCJ)
+    // "Transfert" ou "Virement" négatif CHF = virement bancaire sortant (ex: Revolut → BCJ)
     // → virement interne à confirmer, ne pas comptabiliser en dépense
-    if (type === "Transfert" && montant < 0) {
+    if ((type === "Transfert" || type === "Virement") && montant < 0) {
       rows.push({
         id, date, libelle, montant, type: "Dépense", categorie: "Transfert",
         source: "Revolut", duplicate: existingKeys.has(id),
